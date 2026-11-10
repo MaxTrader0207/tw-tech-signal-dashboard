@@ -124,6 +124,7 @@ def signal_series(rows):
 
 
 WEEK_MA = 10
+WEEK_RSI = 6
 
 
 def weekly_series(rows):
@@ -131,7 +132,8 @@ def weekly_series(rows):
 
     回傳 (wk_of_row, weeks)：
       wk_of_row[i] ＝ 第 i 個交易日所屬週在 weeks 中的索引
-      weeks[k]     ＝ {"d": 該週最後交易日, "c": 週收盤, "ma": 週 MA10（不足 10 週為 None）}
+      weeks[k]     ＝ {"d": 該週最後交易日, "c": 週收盤, "ma": 週 MA10（不足 10 週為 None）,
+                       "r6": 週 RSI(6)（三竹 Wilder 平滑，以週收盤計算；不足 7 週為 None）}
     """
     import datetime as _dt
     weeks, wk_of_row, keys = [], [], []
@@ -151,15 +153,19 @@ def weekly_series(rows):
             s -= weeks[k - WEEK_MA]["c"]
         if k >= WEEK_MA - 1:
             w["ma"] = s / WEEK_MA
+    r = rsi([w["c"] for w in weeks], WEEK_RSI)
+    for w, v in zip(weeks, r):
+        w["r6"] = v
     return wk_of_row, weeks
 
 
 def last_week_state(wk_of_row, weeks, i):
-    """第 i 個交易日的「上週」週線狀態：(上週收盤, 上週週MA10, 上週最後交易日, 前一週週MA10)；資料不足回傳 None。"""
+    """第 i 個交易日的「上週」週線狀態：
+    (上週收盤, 上週週MA10, 上週最後交易日, 前一週週MA10, 上週週RSI6)；資料不足回傳 None。"""
     k = wk_of_row[i] - 1
-    if k < 1 or weeks[k]["ma"] is None or weeks[k - 1]["ma"] is None:
+    if k < 1 or weeks[k]["ma"] is None or weeks[k - 1]["ma"] is None or weeks[k]["r6"] is None:
         return None
-    return weeks[k]["c"], weeks[k]["ma"], weeks[k]["d"], weeks[k - 1]["ma"]
+    return weeks[k]["c"], weeks[k]["ma"], weeks[k]["d"], weeks[k - 1]["ma"], weeks[k]["r6"]
 
 
 def x_group(sigs, side):

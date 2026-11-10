@@ -179,7 +179,7 @@ function openSheet(id) {
     <div class="grid" style="margin-bottom:14px">${cell('20 日均量', s.v20 == null ? '—' : SC.int(s.v20) + ' 張')}${cell('今日成交量', s.vol == null ? '—' : SC.int(s.vol / 1000) + ' 張')}</div>
     <div class="sec">上週週線${s.wk ? `（${md(s.wk.d)} 當週）` : ''}</div>
     <div class="grid" style="margin-bottom:14px">${cell('週收盤', s.wk ? f2(s.wk.c) : '—', s.wk ? (s.wk.dn ? 'dn' : 'up') : '')}${cell('週 MA10', s.wk ? f2(s.wk.ma) + SC.wkArrow(s) : '—', s.wk && s.wk.mp != null ? (s.wk.ma > s.wk.mp ? 'up' : 'dn') : '')}${cell('前一週 MA10', s.wk && s.wk.mp != null ? f2(s.wk.mp) : '—')}
-      ${cell('多方條件', s.wk ? (SC.wkRise(s) ? '✓ MA10上揚' : '✗ MA10未上揚') : '—', s.wk ? (SC.wkRise(s) ? 'up' : '') : '')}${cell('空方條件', s.wk ? (s.wk.dn ? '✓ 收盤跌破' : '✗ 未跌破') : '—', s.wk ? (s.wk.dn ? 'dn' : '') : '')}</div>
+      ${cell('週 RSI(6)', s.wk && s.wk.r6 != null ? f2(s.wk.r6) : '—', s.wk && s.wk.r6 != null ? (s.wk.r6 > 50 ? 'up' : 'dn') : '')}${cell('多方條件', s.wk ? (SC.wkBull(s) ? '✓ 週RSI6>50' : '✗ 週RSI6≤50') : '—', s.wk ? (SC.wkBull(s) ? 'up' : '') : '')}${cell('空方條件', s.wk ? (s.wk.dn ? '✓ 收盤跌破' : '✗ 未跌破') : '—', s.wk ? (s.wk.dn ? 'dn' : '') : '')}</div>
     <div class="sec">均線</div>
     <div class="grid">${MA_N.map(n => cell('MA' + n, f2(s.ma[n]), s.close > s.ma[n] ? 'up' : 'dn')).join('')}</div>
     <div class="sec">RSI ／ MACD</div>
@@ -278,7 +278,8 @@ async function show(date) {
     const gt = cur.generated_at ? new Date(cur.generated_at).toLocaleString('zh-TW', {hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : '—';
     $('meta').textContent = `資料日期 ${cur.date}｜有效 ${st.scanned ?? cur.stocks.length} 檔｜更新 ${gt}` +
       (ver < 2 ? '｜⚠ 舊格式資料，均量／除息／新增標記不適用' : ver < 3 ? '｜此日期尚無歷史回測' : '') +
-      (ver < 4 ? '｜⚠ 尚無週線資訊，週線濾網不適用' : ver < 5 ? '｜⚠ 舊版週線條件（多方：週收站上週MA10）' : '');
+      (ver < 4 ? '｜⚠ 尚無週線資訊，週線濾網不適用' : ver < 5 ? '｜⚠ 舊版週線條件（多方：週收站上週MA10）'
+        : ver < 6 ? '｜⚠ 舊版週線條件（多方：週MA10上揚）' : '');
     fillIndustries(); refilter();
   } catch (e) { $('err').textContent = `無法載入 ${date} 的資料：${e.message}`; }
 }
