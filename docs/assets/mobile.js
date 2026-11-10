@@ -278,7 +278,7 @@ async function show(date) {
     const gt = cur.generated_at ? new Date(cur.generated_at).toLocaleString('zh-TW', {hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : '—';
     $('meta').textContent = `資料日期 ${cur.date}｜有效 ${st.scanned ?? cur.stocks.length} 檔｜更新 ${gt}` +
       (ver < 2 ? '｜⚠ 舊格式資料，均量／除息／新增標記不適用' : ver < 3 ? '｜此日期尚無歷史回測' : '') +
-      (ver < 4 ? '｜⚠ 尚無週線資訊，週線濾網不適用' : '');
+      (ver < 4 ? '｜⚠ 尚無週線資訊，週線濾網不適用' : ver < 5 ? '｜⚠ 舊版週線條件（多方：週收站上週MA10）' : '');
     fillIndustries(); refilter();
   } catch (e) { $('err').textContent = `無法載入 ${date} 的資料：${e.message}`; }
 }

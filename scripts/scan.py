@@ -537,7 +537,17 @@ def dump(path, obj):
 
 
 def write_outputs(payload):
+    """寫出資料；若新資料日期比現有最新資料還舊（例如 Yahoo 換日時段暫時少一根 K 棒），保留現有資料不覆蓋。"""
     date = payload["date"]
+    cur = DATA / "latest.json"
+    if cur.exists():
+        try:
+            old = json.loads(cur.read_text(encoding="utf-8")).get("date", "")
+            if old and date < old:
+                log(f"[保護] 新資料日期 {date} 早於現有 {old}，疑似 Yahoo 資料暫時缺漏，保留現有資料不覆蓋")
+                return False
+        except Exception:  # noqa: BLE001
+            pass
     dump(DATA / "latest.json", payload)
     dump(HIST / f"{date}.json", payload)
 
@@ -552,6 +562,7 @@ def write_outputs(payload):
         except Exception:  # noqa: BLE001
             continue
     dump(DATA / "index.json", {"latest": date, "dates": dates})
+    return True
 
 
 def main():

@@ -215,7 +215,7 @@ async function show(date) {
     $('meta').textContent = `資料日期 ${cur.date}｜清單 ${st.universe ?? '—'} 檔，有效 ${st.scanned ?? cur.stocks.length} 檔` +
       `（未取得 ${st.no_data ?? 0}、資料不足 ${st.insufficient ?? 0}、非當日 ${st.stale ?? 0}）｜點選表格代號可查看個股明細` +
       (ver < 2 ? '｜⚠ 此日期為舊格式資料，均量篩選、除息與新增標記不適用' : ver < 3 ? '｜此日期資料尚無歷史回測' : '') +
-      (ver < 4 ? '｜⚠ 此日期資料尚無週線資訊，週線濾網不適用' : '');
+      (ver < 4 ? '｜⚠ 此日期資料尚無週線資訊，週線濾網不適用' : ver < 5 ? '｜⚠ 此日期為舊版週線條件（多方：週收盤站上週MA10）' : '');
     $('btNote').innerHTML = cur.bt
       ? `<span>📊 歷史回測期間 ${SC.btPeriod(cur)}：訊號首日出現後持有 5／10／20 個交易日，多方看上漲機率、空方看下跌機率；<b style="color:var(--accent)">金色</b>＝高於同期全體個股基準 3 個百分點以上。回測結果隨「20 日均量」篩選切換。</span>`
       : '';
