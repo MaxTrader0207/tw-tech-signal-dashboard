@@ -91,6 +91,15 @@ td.txt{text-align:left}
 .tag.bear{background:var(--bear-bg);color:var(--bear);border:1px solid rgba(31,209,139,.4)}
 .tag.none{color:var(--muted);border:1px solid var(--line)}
 #queryBox{display:none}
+/* 區塊輸出按鈕 */
+.exp{display:inline-flex;gap:6px;margin-left:4px}
+.xbtn{background:var(--panel2);color:var(--muted);border:1px solid var(--line);border-radius:7px;
+  padding:2px 9px;font-size:.8rem;font-weight:700;line-height:1.5;cursor:pointer;white-space:nowrap}
+.xbtn:hover:not(:disabled){color:var(--text);border-color:var(--accent)}
+.xbtn:disabled{opacity:.35;cursor:not-allowed}
+.xbtn.done{color:var(--bear);border-color:var(--bear)}
+.cond h4{align-items:center}
+.cond h4>span:first-child{flex:1}
 
 footer{margin-top:26px;border-top:2px solid var(--line);padding-top:16px}
 .src{font-size:1rem;color:var(--muted);margin-bottom:12px}
@@ -209,13 +218,62 @@ function table(list, cols) {
     list.map(s => `<tr><td class="id"><a href="#" data-q="${esc(s.id)}">${esc(s.id)}</a></td><td>${esc(s.name)}</td><td class="num">${f2(s.close)}</td><td class="num">${pct(s.chg)}</td>${cols.map(c => `<td class="num">${c.v(s)}</td>`).join('')}</tr>`).join('') +
     '</tbody></table></div>';
 }
-const cond = (title, list, cols) =>
-  `<div class="cond"><h4><span>${title}</span><span class="n">${list.length}</span></h4>${table(list, cols)}</div>`;
-const box = (cls, badge, title, list, cols) =>
-  `<div class="mabox ${cls}"><h4><span class="badge">${badge}</span><span class="t">${title}</span><span class="n">${list.length}</span></h4>${table(list, cols)}</div>`;
-const maBox = (n, title, list, cols) => box(`ma${n}`, `MA${n}`, title, list, cols);
+/* ---------- 區塊輸出：CSV 下載／複製代號 ---------- */
+let BLOCKS = [];
+const FILE_LABEL = {
+  maBull30: 'MA30_黃金交叉', maBull60: 'MA60_黃金交叉', maBull100: 'MA100_黃金交叉',
+  maBear30: 'MA30_死亡交叉', maBear60: 'MA60_死亡交叉', maBear100: 'MA100_死亡交叉',
+  rsiBull: 'RSI6_80以上', rsiBear: 'RSI6_20以下',
+  macdBullCross: 'MACD_柱狀體翻正', macdBullExp: 'MACD_柱狀體連2日放大',
+  macdBearCross: 'MACD_柱狀體翻負', macdBearExp: 'MACD_柱狀體連2日減少',
+};
+function expBtns(key, title, list, cols) {
+  const side = /Bull/.test(key) ? '多方' : '空方';
+  const i = BLOCKS.push({key, side, title, list: [...list], cols}) - 1;
+  const dis = list.length ? '' : ' disabled';
+  return `<span class="exp"><button class="xbtn" data-exp="csv" data-b="${i}" title="下載此區塊為 CSV（可用 Excel 開啟）"${dis}>⬇ CSV</button>` +
+         `<button class="xbtn" data-exp="copy" data-b="${i}" title="複製此區塊所有股票代號（每行一檔）"${dis}>⧉ 代號</button></span>`;
+}
+const plain = h => String(h).replace(/<[^>]+>/g, '').trim();
+const csvCell = v => /[",\n]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : v;
+
+function exportCsv(b) {
+  const head = ['資料日期', '多空', '條件', '代號', '名稱', '市場', '產業', '收盤', '漲跌幅(%)', ...b.cols.map(c => plain(c.h))];
+  const rows = b.list.map(s => [
+    cur.date, b.side, b.title, s.id, s.name, MKT[s.mkt] || '', s.ind || '',
+    f2(s.close), s.chg == null ? '' : s.chg.toFixed(2), ...b.cols.map(c => plain(c.v(s)))
+  ]);
+  const csv = '﻿' + [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
+  const name = `技術訊號_${cur.date}_${b.side}_${FILE_LABEL[b.key] || b.key}.csv`;
+  const url = URL.createObjectURL(new Blob([csv], {type: 'text/csv;charset=utf-8'}));
+  const a = Object.assign(document.createElement('a'), {href: url, download: name});
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function copyIds(b) {
+  const text = b.list.map(s => s.id).join('\n');
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {
+    const t = Object.assign(document.createElement('textarea'), {value: text});
+    t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove();
+  }
+}
+
+function flash(btn, msg) {
+  const old = btn.textContent; btn.textContent = msg; btn.classList.add('done');
+  setTimeout(() => { btn.textContent = old; btn.classList.remove('done'); }, 1500);
+}
+
+const cond = (title, list, cols, key) =>
+  `<div class="cond"><h4><span>${title}</span><span class="n">${list.length}</span>${expBtns(key, plain(title), list, cols)}</h4>${table(list, cols)}</div>`;
+const box = (cls, badge, title, list, cols, key) =>
+  `<div class="mabox ${cls}"><h4><span class="badge">${badge}</span><span class="t">${title}</span><span class="n">${list.length}</span>${expBtns(key, `${badge}｜${plain(title)}`, list, cols)}</h4>${table(list, cols)}</div>`;
+const maBox = (n, title, list, cols, key) => box(`ma${n}`, `MA${n}`, title, list, cols, key);
 
 function render(results) {
+  BLOCKS = [];
   const by = k => results.filter(s => s.sig[k]).sort((a, b) => b.chg - a.chg);
   const maCols = n => k => [
     {h: `MA${n}`, v: s => f2(s.ma[n])},
@@ -251,10 +309,10 @@ function render(results) {
     <div class="malegend"><span><i style="background:#f5b83d"></i>MA30 短期</span><span><i style="background:#4da3ff"></i>MA60 中期</span><span><i style="background:#b07cff"></i>MA100 長期</span></div>
     <div class="sides">
       <div class="side bull"><h3>▲ 多方板塊</h3>
-        ${MA_N.map(n => maBox(n, `收盤價黃金交叉 MA${n}，且 MA${n} 上揚`, lists['maBull'+n], maCols(n)('maBull'))).join('')}
+        ${MA_N.map(n => maBox(n, `收盤價黃金交叉 MA${n}，且 MA${n} 上揚`, lists['maBull'+n], maCols(n)('maBull'), 'maBull'+n)).join('')}
       </div>
       <div class="side bear"><h3>▼ 空方板塊</h3>
-        ${MA_N.map(n => maBox(n, `收盤價死亡交叉 MA${n}，且 MA${n} 下彎`, lists['maBear'+n], maCols(n)('maBear'))).join('')}
+        ${MA_N.map(n => maBox(n, `收盤價死亡交叉 MA${n}，且 MA${n} 下彎`, lists['maBear'+n], maCols(n)('maBear'), 'maBear'+n)).join('')}
       </div>
     </div>
   </section>
@@ -263,8 +321,8 @@ function render(results) {
     <h2>⚡ RSI 指標</h2>
     <div class="def">RSI 參數 6，日線收盤</div>
     <div class="sides">
-      <div class="side bull"><h3>▲ 多方板塊</h3>${cond('RSI(6) ≥ 80', lists.rsiBull.sort((a,b)=>b.rsi-a.rsi), rsiCols)}</div>
-      <div class="side bear"><h3>▼ 空方板塊</h3>${cond('RSI(6) ≤ 20', lists.rsiBear.sort((a,b)=>a.rsi-b.rsi), rsiCols)}</div>
+      <div class="side bull"><h3>▲ 多方板塊</h3>${cond('RSI(6) ≥ 80', lists.rsiBull.sort((a,b)=>b.rsi-a.rsi), rsiCols, 'rsiBull')}</div>
+      <div class="side bear"><h3>▼ 空方板塊</h3>${cond('RSI(6) ≤ 20', lists.rsiBear.sort((a,b)=>a.rsi-b.rsi), rsiCols, 'rsiBear')}</div>
     </div>
   </section>
 
@@ -274,12 +332,12 @@ function render(results) {
     <div class="malegend"><span><i style="background:#22c7d6"></i>零軸交叉（轉折）</span><span><i style="background:#ff8a3d"></i>柱狀體延續（動能）</span></div>
     <div class="sides">
       <div class="side bull"><h3>▲ 多方板塊</h3>
-        ${box('oscx', '交叉', '柱狀體黃金交叉 0（由 ≤0 轉 >0）', lists.macdBullCross, oscCols)}
-        ${box('osce', '動能', '柱狀體 > 0，且連續 2 日放大', lists.macdBullExp, oscCols)}
+        ${box('oscx', '交叉', '柱狀體黃金交叉 0（由 ≤0 轉 >0）', lists.macdBullCross, oscCols, 'macdBullCross')}
+        ${box('osce', '動能', '柱狀體 > 0，且連續 2 日放大', lists.macdBullExp, oscCols, 'macdBullExp')}
       </div>
       <div class="side bear"><h3>▼ 空方板塊</h3>
-        ${box('oscx', '交叉', '柱狀體死亡交叉 0（由 ≥0 轉 <0）', lists.macdBearCross, oscCols)}
-        ${box('osce', '動能', '柱狀體 < 0，且連續 2 日減少', lists.macdBearExp, oscCols)}
+        ${box('oscx', '交叉', '柱狀體死亡交叉 0（由 ≥0 轉 <0）', lists.macdBearCross, oscCols, 'macdBearCross')}
+        ${box('osce', '動能', '柱狀體 < 0，且連續 2 日減少', lists.macdBearExp, oscCols, 'macdBearExp')}
       </div>
     </div>
   </section>`;
@@ -386,7 +444,14 @@ $('ind').addEventListener('change', refreshBoard);
 $('qBtn').addEventListener('click', query);
 $('q').addEventListener('keydown', e => { if (e.key === 'Enter') query(); });
 $('qClr').addEventListener('click', () => { $('q').value = ''; query(); });
-$('board').addEventListener('click', e => {
+$('board').addEventListener('click', async e => {
+  const x = e.target.closest('button[data-exp]');
+  if (x) {
+    const b = BLOCKS[+x.dataset.b]; if (!b || !b.list.length) return;
+    if (x.dataset.exp === 'csv') { exportCsv(b); flash(x, '✓ 已下載'); }
+    else { await copyIds(b); flash(x, `✓ ${b.list.length} 檔`); }
+    return;
+  }
   const a = e.target.closest('a[data-q]'); if (!a) return;
   e.preventDefault(); $('q').value = a.dataset.q; query();
   $('queryBox').scrollIntoView({behavior: 'smooth', block: 'start'});
