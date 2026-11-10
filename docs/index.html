@@ -78,6 +78,15 @@ td.txt{text-align:left}
 .mabox.ma100{--ma:#b07cff;--ma-bg:rgba(176,124,255,.09)}
 .mabox.oscx{--ma:#22c7d6;--ma-bg:rgba(34,199,214,.08)}
 .mabox.osce{--ma:#ff8a3d;--ma-bg:rgba(255,138,61,.08)}
+.mabox.x3{--ma:#ff5fa2;--ma-bg:rgba(255,95,162,.10)}
+.mabox.xmd{--ma:#38bdf8;--ma-bg:rgba(56,189,248,.08)}
+.mabox.xmr{--ma:#a3e635;--ma-bg:rgba(163,230,53,.07)}
+.mabox.xrd{--ma:#fbbf24;--ma-bg:rgba(251,191,36,.08)}
+section.xsec{border-color:#5a4a1c;box-shadow:0 0 0 1px rgba(245,184,61,.15) inset}
+section.xsec table{font-size:1rem}
+section.xsec th,section.xsec td{padding:7px 5px}
+.side>h3 .h3n{font-family:"JetBrains Mono",monospace;font-size:1.05rem;margin-left:8px;opacity:.9}
+.mtag{display:inline-block;min-width:30px;text-align:center;border-radius:5px;padding:0 5px;margin-left:3px;font-size:.8rem;font-weight:700;color:#111}
 .mabox h4{margin:0 0 6px;font-size:1.1rem;display:flex;align-items:center;gap:10px}
 .mabox h4 .t{flex:1}
 .mabox h4 .badge{background:var(--ma);color:#111;border-radius:6px;padding:0 9px;font-family:"JetBrains Mono",monospace;font-weight:700;font-size:.95rem}
@@ -226,6 +235,8 @@ const FILE_LABEL = {
   rsiBull: 'RSI6_80以上', rsiBear: 'RSI6_20以下',
   macdBullCross: 'MACD_柱狀體翻正', macdBullExp: 'MACD_柱狀體連2日放大',
   macdBearCross: 'MACD_柱狀體翻負', macdBearExp: 'MACD_柱狀體連2日減少',
+  xBull3: '交集_三指標共振', xBullMD: '交集_均線+MACD', xBullMR: '交集_均線+RSI', xBullRD: '交集_RSI+MACD',
+  xBear3: '交集_三指標共振', xBearMD: '交集_均線+MACD', xBearMR: '交集_均線+RSI', xBearRD: '交集_RSI+MACD',
 };
 function expBtns(key, title, list, cols) {
   const side = /Bull/.test(key) ? '多方' : '空方';
@@ -292,8 +303,47 @@ function render(results) {
   SIG_KEYS.forEach(k => lists[k] = by(k));
 
   const uniq = keys => new Set(keys.flatMap(k => lists[k].map(s => s.id))).size;
+
+  /* ---- 技術指標交集：均線／RSI／MACD 三大類 ---- */
+  const fam = (s, B) => ({
+    ma: MA_N.filter(n => s.sig['ma' + B + n]),
+    rsi: !!s.sig['rsi' + B],
+    macd: ['Cross', 'Exp'].filter(t => s.sig['macd' + B + t]),
+  });
+  const hitCnt = (s, B) => { const f = fam(s, B); return f.ma.length + (f.rsi ? 1 : 0) + f.macd.length; };
+  const inter = B => {
+    const out = {all: [], md: [], mr: [], rd: []};
+    results.forEach(s => {
+      const f = fam(s, B), m = f.ma.length > 0, r = f.rsi, d = f.macd.length > 0;
+      if (m && r && d) out.all.push(s);
+      else if (m && d) out.md.push(s);
+      else if (m && r) out.mr.push(s);
+      else if (r && d) out.rd.push(s);
+    });
+    Object.values(out).forEach(a => a.sort((x, y) => hitCnt(y, B) - hitCnt(x, B) || (B === 'Bull' ? y.chg - x.chg : x.chg - y.chg)));
+    return out;
+  };
+  const MA_COLOR = {30: '#f5b83d', 60: '#4da3ff', 100: '#b07cff'};
+  const xCols = B => [
+    {h: '均線', v: s => { const f = fam(s, B); return f.ma.length ? f.ma.map(n => `<span class="mtag" style="background:${MA_COLOR[n]}">${n}</span>`).join(' ') : '—'; }},
+    {h: 'RSI(6)', v: s => s.sig['rsi' + B] ? `<b class="${B === 'Bull' ? 'up' : 'dn'}">${f2(s.rsi)}</b>` : f2(s.rsi)},
+    {h: 'MACD', v: s => fam(s, B).macd.map(t => t === 'Cross' ? (B === 'Bull' ? '翻正' : '翻負') : (B === 'Bull' ? '連增' : '連減')).join('＋') || '—'},
+    {h: '訊號', v: s => `<b>${hitCnt(s, B)}</b>`},
+  ];
+  const xi = {Bull: inter('Bull'), Bear: inter('Bear')};
+  const xTotal = B => Object.values(xi[B]).reduce((n, a) => n + a.length, 0);
+  const xSide = B => {
+    const o = xi[B], c = xCols(B);
+    return box('x3', '三指標共振', '均線＋RSI＋MACD 同時命中', o.all, c, `x${B}3`) +
+           box('xmd', '均線＋MACD', '兩項命中（不含三指標共振）', o.md, c, `x${B}MD`) +
+           box('xmr', '均線＋RSI', '兩項命中（不含三指標共振）', o.mr, c, `x${B}MR`) +
+           box('xrd', 'RSI＋MACD', '兩項命中（不含三指標共振）', o.rd, c, `x${B}RD`);
+  };
+
   $('summary').innerHTML = [
     ['掃描檔數', results.length, ''],
+    ['交集多方', xTotal('Bull'), 'bull'],
+    ['交集空方', xTotal('Bear'), 'bear'],
     ['均線多方', uniq(['maBull30','maBull60','maBull100']), 'bull'],
     ['均線空方', uniq(['maBear30','maBear60','maBear100']), 'bear'],
     ['RSI 多方', lists.rsiBull.length, 'bull'],
@@ -303,6 +353,16 @@ function render(results) {
   ].map(([t, v, c]) => `<div class="kpi ${c}"><div class="t">${t}</div><div class="v">${v}</div></div>`).join('');
 
   $('board').innerHTML = `
+  <section class="ind xsec">
+    <h2>🎯 技術指標交集</h2>
+    <div class="def">同時命中兩類以上指標的個股，多空分開計算。三類為：均線（MA30／60／100 任一交叉，表內以 30／60／100 標示）、RSI(6)（≥80／≤20）、MACD（柱狀體翻正／翻負，或連 2 日放大「連增」／減少「連減」）。每檔只列在命中最多的組合中，依訊號數排序。</div>
+    <div class="malegend"><span><i style="background:#ff5fa2"></i>三指標共振</span><span><i style="background:#38bdf8"></i>均線＋MACD</span><span><i style="background:#a3e635"></i>均線＋RSI</span><span><i style="background:#fbbf24"></i>RSI＋MACD</span></div>
+    <div class="sides">
+      <div class="side bull"><h3>▲ 多方交集<span class="h3n">${xTotal('Bull')} 檔</span></h3>${xSide('Bull')}</div>
+      <div class="side bear"><h3>▼ 空方交集<span class="h3n">${xTotal('Bear')} 檔</span></h3>${xSide('Bear')}</div>
+    </div>
+  </section>
+
   <section class="ind">
     <h2>📈 均線指標</h2>
     <div class="def">日線收盤價與 30／60／100 日均線交叉（近 3 個交易日內發生），並搭配均線方向</div>
