@@ -67,6 +67,22 @@ td.num{font-family:"JetBrains Mono",monospace}
 td.txt{text-align:left}
 .up{color:var(--bull)} .dn{color:var(--bear)}
 .empty{color:var(--muted);font-size:1rem;padding:6px 2px}
+/* 均線小區塊：MA30／MA60／MA100 各自配色 */
+.mabox{--ma:#f5b83d;--ma-bg:rgba(245,184,61,.08);
+  background:var(--ma-bg);border:1px solid var(--line);border-left:5px solid var(--ma);
+  border-radius:10px;padding:10px 12px;margin-bottom:12px}
+.mabox:last-child{margin-bottom:0}
+.mabox.ma30{--ma:#f5b83d;--ma-bg:rgba(245,184,61,.08)}
+.mabox.ma60{--ma:#4da3ff;--ma-bg:rgba(77,163,255,.08)}
+.mabox.ma100{--ma:#b07cff;--ma-bg:rgba(176,124,255,.09)}
+.mabox h4{margin:0 0 6px;font-size:1.1rem;display:flex;align-items:center;gap:10px}
+.mabox h4 .t{flex:1}
+.mabox h4 .badge{background:var(--ma);color:#111;border-radius:6px;padding:0 9px;font-family:"JetBrains Mono",monospace;font-weight:700;font-size:.95rem}
+.mabox h4 .n{font-family:"JetBrains Mono",monospace;background:var(--panel2);border:1px solid var(--ma);color:var(--ma);border-radius:999px;padding:0 10px;font-size:1rem}
+.mabox th{color:var(--ma);opacity:.85}
+.mabox table tr:last-child td{border-bottom:none}
+.malegend{display:flex;flex-wrap:wrap;gap:14px;margin:-6px 0 14px;font-size:.95rem;color:var(--muted)}
+.malegend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 .tag{display:inline-block;border-radius:999px;padding:1px 9px;margin:2px 3px 2px 0;font-size:.85rem;font-weight:700}
 .tag.bull{background:var(--bull-bg);color:var(--bull);border:1px solid rgba(255,77,94,.4)}
 .tag.bear{background:var(--bear-bg);color:var(--bear);border:1px solid rgba(31,209,139,.4)}
@@ -192,6 +208,8 @@ function table(list, cols) {
 }
 const cond = (title, list, cols) =>
   `<div class="cond"><h4><span>${title}</span><span class="n">${list.length}</span></h4>${table(list, cols)}</div>`;
+const maBox = (n, title, list, cols) =>
+  `<div class="mabox ma${n}"><h4><span class="badge">MA${n}</span><span class="t">${title}</span><span class="n">${list.length}</span></h4>${table(list, cols)}</div>`;
 
 function render(results) {
   const by = k => results.filter(s => s.sig[k]).sort((a, b) => b.chg - a.chg);
@@ -226,12 +244,13 @@ function render(results) {
   <section class="ind">
     <h2>📈 均線指標</h2>
     <div class="def">日線收盤價與 30／60／100 日均線交叉（近 3 個交易日內發生），並搭配均線方向</div>
+    <div class="malegend"><span><i style="background:#f5b83d"></i>MA30 短期</span><span><i style="background:#4da3ff"></i>MA60 中期</span><span><i style="background:#b07cff"></i>MA100 長期</span></div>
     <div class="sides">
       <div class="side bull"><h3>▲ 多方板塊</h3>
-        ${MA_N.map((n, i) => cond(`${i+1}. 收盤價黃金交叉 MA${n}，且 MA${n} 上揚`, lists['maBull'+n], maCols(n)('maBull'))).join('')}
+        ${MA_N.map(n => maBox(n, `收盤價黃金交叉 MA${n}，且 MA${n} 上揚`, lists['maBull'+n], maCols(n)('maBull'))).join('')}
       </div>
       <div class="side bear"><h3>▼ 空方板塊</h3>
-        ${MA_N.map((n, i) => cond(`${i+1}. 收盤價死亡交叉 MA${n}，且 MA${n} 下彎`, lists['maBear'+n], maCols(n)('maBear'))).join('')}
+        ${MA_N.map(n => maBox(n, `收盤價死亡交叉 MA${n}，且 MA${n} 下彎`, lists['maBear'+n], maCols(n)('maBear'))).join('')}
       </div>
     </div>
   </section>
