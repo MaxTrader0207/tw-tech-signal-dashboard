@@ -115,6 +115,20 @@ section.xsec td:nth-child(2) .mk{margin:2px 4px 0 0}
 .mk.ex.hit{background:#4a3410;border-color:var(--accent);color:#ffd58a}
 .legend{color:var(--muted);font-size:.88rem;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center}
 .legend .mk{margin-left:0}
+.star{color:var(--accent);margin-right:4px}
+tr.w td{background:rgba(245,184,61,.07)}
+.bt{display:flex;flex-wrap:wrap;gap:2px 16px;align-items:baseline;font-size:.84rem;color:var(--muted);margin:0 0 8px;padding:5px 9px;background:rgba(0,0,0,.2);border-radius:7px}
+.bt-h{color:var(--text);font-weight:700}
+.bt-h small,.bt-i small{color:var(--muted);font-weight:400}
+.bt-i em{font-style:normal;color:var(--text);font-weight:700;margin-right:5px}
+.bt b{font-family:"JetBrains Mono",monospace;font-weight:700;color:var(--text)}
+.bt b.good{color:var(--accent)}
+.bt b.poor{color:#6f7a93}
+.bt b.up{color:var(--bull)} .bt b.dn{color:var(--bear)}
+.bt-na{font-style:italic}
+.sbtn{background:none;border:1px solid var(--line);border-radius:8px;padding:1px 8px;font-size:1rem;color:var(--muted);line-height:1.4}
+.sbtn.on{color:var(--accent);border-color:var(--accent)}
+#watchInput{flex:1;min-width:260px}
 #queryBox{display:none}
 /* 區塊輸出按鈕 */
 .exp{display:inline-flex;gap:6px;margin-left:4px}
@@ -182,6 +196,14 @@ footer{margin-top:26px;border-top:2px solid var(--line);padding-top:16px}
     <span><span class="mk run">連3</span> 已連續 3 個交易日</span>
     <span><span class="mk ex">除息</span> 近 5 個交易日內除息</span>
     <span><span class="mk ex hit">⚠除息</span> 以還原權息價計算時此訊號不成立，可能是除息跳空造成</span>
+    <span><span class="star">★</span>自選股（置頂並淡金底色）</span>
+  </div>
+  <div class="legend" id="btNote"></div>
+  <div class="row">
+    <label for="watchInput">⭐ 自選股</label>
+    <input type="search" id="watchInput" placeholder="輸入代號，以空白或逗號分隔，例如 2330 2454 3008（按 Enter 儲存）" autocomplete="off">
+    <label class="chk"><input type="checkbox" id="watchOnly"> 只看自選股</label>
+    <span class="hint" id="watchInfo"></span>
   </div>
   <div class="row">
     <label for="q">個股查詢</label>
@@ -213,6 +235,7 @@ footer{margin-top:26px;border-top:2px solid var(--line);padding-top:16px}
     「黃金／死亡交叉」判定為前一日收盤 ≤／≥ 均線、當日收盤 ＞／＜ 均線，發生於最近 3 個交易日內；「上揚／下彎」為最新一日均線值高於／低於前一日。
     價格採 Yahoo 未還原除權息之收盤價（僅含股票分割調整）；台北時間 14:30 前不採用當日 K 棒。停牌、資料未達 110 個交易日或最新資料非當日之個股不列入。
     「新／連 N」以同一套資料逐日回推訊號連續出現的交易日數；「除息」為近 5 個交易日內依 Yahoo 配息與還原因子偵測，「⚠除息」表示改用還原權息價計算時該訊號不成立。20 日均量以 Yahoo 成交量換算張數。
+    「歷史回測」統計近兩年每個訊號首日出現後持有 5／10／20 個交易日的表現（以還原權息價計算），依事件當日的 20 日均量分組、隨上方均量篩選切換；多方看上漲機率、空方看下跌機率，金色表示比同期全體個股基準高 3 個百分點以上。回測不含交易成本，過去表現不代表未來。
   </div>
   <div class="warn">
     <h3>⚠ 投資警語</h3>
@@ -221,398 +244,7 @@ footer{margin-top:26px;border-top:2px solid var(--line);padding-top:16px}
 </footer>
 </div>
 
-<script>
-(() => {
-const DATA = 'data/';
-const $ = id => document.getElementById(id);
-const cache = {};      // date -> payload
-let cur = null;        // 目前顯示的資料
-let latestDate = '';
-
-/* ---------- 基本 UI ---------- */
-const tick = () => $('clock').textContent = new Date().toLocaleString('zh-TW', {hour12:false});
-tick(); setInterval(tick, 1000);
-
-/* ---------- 讀取靜態資料 ---------- */
-async function load(path) {
-  const r = await fetch(DATA + path + '?t=' + Math.floor(Date.now() / 60000), {cache: 'no-store'});
-  if (!r.ok) throw new Error(`${path}：HTTP ${r.status}`);
-  return r.json();
-}
-
-/* ---------- 格式 ---------- */
-const f2 = x => x == null || isNaN(x) ? '—' : (+x).toFixed(2);
-const pct = x => x == null ? '—' : `<span class="${x > 0 ? 'up' : x < 0 ? 'dn' : ''}">${x > 0 ? '+' : ''}${x.toFixed(2)}%</span>`;
-const md = d => d ? d.slice(5).replace('-', '/') : '—';
-const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
-const MKT = {TWSE: '上市', TPEx: '上櫃'};
-
-const MA_N = [30, 60, 100];
-const SIG_KEYS = ['maBull30','maBull60','maBull100','maBear30','maBear60','maBear100','rsiBull','rsiBear','macdBullCross','macdBullExp','macdBearCross','macdBearExp'];
-const SIG_LABEL = {
-  maBull30: '黃金交叉 MA30', maBull60: '黃金交叉 MA60', maBull100: '黃金交叉 MA100',
-  maBear30: '死亡交叉 MA30', maBear60: '死亡交叉 MA60', maBear100: '死亡交叉 MA100',
-  rsiBull: 'RSI(6) ≥ 80', rsiBear: 'RSI(6) ≤ 20',
-  macdBullCross: 'OSC 翻正', macdBullExp: 'OSC 連 2 日放大',
-  macdBearCross: 'OSC 翻負', macdBearExp: 'OSC 連 2 日減少',
-};
-
-/* ---------- 看板 ---------- */
-/* ---------- 標記：新增／連 N、除息 ---------- */
-const STREAK_MAX = 10;
-const sideKeys = (s, key) => {
-  const m = /^x(Bull|Bear)/.exec(key);
-  return m ? SIG_KEYS.filter(k => k.includes(m[1]) && s.sig[k]) : [key];
-};
-const streakOf = (s, key) => {
-  if (!s.st) return null;
-  const v = sideKeys(s, key).map(k => s.st[k]).filter(Boolean);
-  return v.length ? Math.min(...v) : null;
-};
-const exHitOf = (s, key) => !!(s.exHit && sideKeys(s, key).some(k => s.exHit.includes(k)));
-const runTxt = n => n == null ? '' : n === 1 ? '新' : n >= STREAK_MAX ? `連${STREAK_MAX}+` : `連${n}`;
-function marks(s, key) {
-  let h = '';
-  const n = streakOf(s, key);
-  if (n === 1) h += '<span class="mk new" title="今日新出現的訊號">新</span>';
-  else if (n) h += `<span class="mk run" title="已連續 ${n} 個交易日">${runTxt(n)}</span>`;
-  if (s.ex) {
-    const hit = exHitOf(s, key);
-    const tip = `${md(s.ex.d)} 除息${s.ex.div ? ' ' + s.ex.div + ' 元' : ''}${hit ? '；以還原權息價計算時此訊號不成立' : ''}`;
-    h += `<span class="mk ex${hit ? ' hit' : ''}" title="${tip}">${hit ? '⚠' : ''}除息</span>`;
-  }
-  return h;
-}
-
-function table(list, cols, key) {
-  if (!list.length) return '<div class="empty">目前無符合條件個股</div>';
-  return `<div class="tbl"><table><thead><tr><th>代號</th><th>名稱</th><th>收盤</th><th>漲跌幅</th>${cols.map(c => `<th>${c.h}</th>`).join('')}</tr></thead><tbody>` +
-    list.map(s => `<tr><td class="id"><a href="#" data-q="${esc(s.id)}">${esc(s.id)}</a></td><td>${esc(s.name)}${marks(s, key)}</td><td class="num">${f2(s.close)}</td><td class="num">${pct(s.chg)}</td>${cols.map(c => `<td class="num">${c.v(s)}</td>`).join('')}</tr>`).join('') +
-    '</tbody></table></div>';
-}
-/* ---------- 區塊輸出：CSV 下載／複製代號 ---------- */
-let BLOCKS = [];
-const FILE_LABEL = {
-  maBull30: 'MA30_黃金交叉', maBull60: 'MA60_黃金交叉', maBull100: 'MA100_黃金交叉',
-  maBear30: 'MA30_死亡交叉', maBear60: 'MA60_死亡交叉', maBear100: 'MA100_死亡交叉',
-  rsiBull: 'RSI6_80以上', rsiBear: 'RSI6_20以下',
-  macdBullCross: 'MACD_柱狀體翻正', macdBullExp: 'MACD_柱狀體連2日放大',
-  macdBearCross: 'MACD_柱狀體翻負', macdBearExp: 'MACD_柱狀體連2日減少',
-  xBull3: '交集_三指標共振', xBullMD: '交集_均線+MACD', xBullMR: '交集_均線+RSI', xBullRD: '交集_RSI+MACD',
-  xBear3: '交集_三指標共振', xBearMD: '交集_均線+MACD', xBearMR: '交集_均線+RSI', xBearRD: '交集_RSI+MACD',
-};
-function expBtns(key, title, list, cols) {
-  const side = /Bull/.test(key) ? '多方' : '空方';
-  const i = BLOCKS.push({key, side, title, list: [...list], cols}) - 1;
-  const dis = list.length ? '' : ' disabled';
-  return `<span class="exp"><button class="xbtn" data-exp="csv" data-b="${i}" title="下載此區塊為 CSV（可用 Excel 開啟）"${dis}>⬇ CSV</button>` +
-         `<button class="xbtn" data-exp="copy" data-b="${i}" title="複製此區塊所有股票代號（每行一檔）"${dis}>⧉ 代號</button></span>`;
-}
-const plain = h => String(h).replace(/<[^>]+>/g, '').trim();
-const csvCell = v => /[",\n]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : v;
-
-function exportCsv(b) {
-  const head = ['資料日期', '多空', '條件', '代號', '名稱', '市場', '產業', '收盤', '漲跌幅(%)', '20日均量(張)', '在榜天數', '除息日', '除息影響', ...b.cols.map(c => plain(c.h))];
-  const rows = b.list.map(s => [
-    cur.date, b.side, b.title, s.id, s.name, MKT[s.mkt] || '', s.ind || '',
-    f2(s.close), s.chg == null ? '' : s.chg.toFixed(2), s.v20 ?? '', streakOf(s, b.key) ?? '',
-    s.ex ? s.ex.d : '', exHitOf(s, b.key) ? '是' : '', ...b.cols.map(c => plain(c.v(s)))
-  ]);
-  const csv = '﻿' + [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
-  const name = `技術訊號_${cur.date}_${b.side}_${FILE_LABEL[b.key] || b.key}.csv`;
-  const url = URL.createObjectURL(new Blob([csv], {type: 'text/csv;charset=utf-8'}));
-  const a = Object.assign(document.createElement('a'), {href: url, download: name});
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-async function copyIds(b) {
-  const text = b.list.map(s => s.id).join('\n');
-  try { await navigator.clipboard.writeText(text); }
-  catch (e) {
-    const t = Object.assign(document.createElement('textarea'), {value: text});
-    t.style.position = 'fixed'; t.style.opacity = '0';
-    document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove();
-  }
-}
-
-function flash(btn, msg) {
-  const old = btn.textContent; btn.textContent = msg; btn.classList.add('done');
-  setTimeout(() => { btn.textContent = old; btn.classList.remove('done'); }, 1500);
-}
-
-const cond = (title, list, cols, key) =>
-  `<div class="cond"><h4><span>${title}</span><span class="n">${list.length}</span>${expBtns(key, plain(title), list, cols)}</h4>${table(list, cols, key)}</div>`;
-const box = (cls, badge, title, list, cols, key) =>
-  `<div class="mabox ${cls}"><h4><span class="badge">${badge}</span><span class="t">${title}</span><span class="n">${list.length}</span>${expBtns(key, `${badge}｜${plain(title)}`, list, cols)}</h4>${table(list, cols, key)}</div>`;
-const maBox = (n, title, list, cols, key) => box(`ma${n}`, `MA${n}`, title, list, cols, key);
-
-function render(results) {
-  BLOCKS = [];
-  const by = k => results.filter(s => s.sig[k]).sort((a, b) => b.chg - a.chg);
-  const maCols = n => k => [
-    {h: `MA${n}`, v: s => f2(s.ma[n])},
-    {h: '交叉日', v: s => md(s.sig[k + n].date)},
-    {h: '均線斜率', v: s => `<span class="${s.sig[k+n].slope > 0 ? 'up' : 'dn'}">${s.sig[k+n].slope > 0 ? '+' : ''}${s.sig[k+n].slope.toFixed(2)}</span>`}
-  ];
-  const rsiCols = [{h: 'RSI(6)', v: s => f2(s.rsi)}];
-  const oscCols = [
-    {h: 'OSC 前2日', v: s => f2(s.osc[0])},
-    {h: 'OSC 前1日', v: s => f2(s.osc[1])},
-    {h: 'OSC 今日', v: s => `<b class="${s.osc[2] > 0 ? 'up' : 'dn'}">${f2(s.osc[2])}</b>`},
-    {h: 'DIF', v: s => f2(s.dif)}, {h: 'MACD', v: s => f2(s.macd)}
-  ];
-
-  const lists = {};
-  SIG_KEYS.forEach(k => lists[k] = by(k));
-
-  const uniq = keys => new Set(keys.flatMap(k => lists[k].map(s => s.id))).size;
-
-  /* ---- 技術指標交集：均線／RSI／MACD 三大類 ---- */
-  const fam = (s, B) => ({
-    ma: MA_N.filter(n => s.sig['ma' + B + n]),
-    rsi: !!s.sig['rsi' + B],
-    macd: ['Cross', 'Exp'].filter(t => s.sig['macd' + B + t]),
-  });
-  const hitCnt = (s, B) => { const f = fam(s, B); return f.ma.length + (f.rsi ? 1 : 0) + f.macd.length; };
-  const inter = B => {
-    const out = {all: [], md: [], mr: [], rd: []};
-    results.forEach(s => {
-      const f = fam(s, B), m = f.ma.length > 0, r = f.rsi, d = f.macd.length > 0;
-      if (m && r && d) out.all.push(s);
-      else if (m && d) out.md.push(s);
-      else if (m && r) out.mr.push(s);
-      else if (r && d) out.rd.push(s);
-    });
-    Object.values(out).forEach(a => a.sort((x, y) => hitCnt(y, B) - hitCnt(x, B) || (B === 'Bull' ? y.chg - x.chg : x.chg - y.chg)));
-    return out;
-  };
-  const MA_COLOR = {30: '#f5b83d', 60: '#4da3ff', 100: '#b07cff'};
-  const xCols = B => [
-    {h: '均線', v: s => { const f = fam(s, B); return f.ma.length ? f.ma.map(n => `<span class="mtag" style="background:${MA_COLOR[n]}">${n}</span>`).join(' ') : '—'; }},
-    {h: 'RSI(6)', v: s => s.sig['rsi' + B] ? `<b class="${B === 'Bull' ? 'up' : 'dn'}">${f2(s.rsi)}</b>` : f2(s.rsi)},
-    {h: 'MACD', v: s => fam(s, B).macd.map(t => t === 'Cross' ? (B === 'Bull' ? '翻正' : '翻負') : (B === 'Bull' ? '連增' : '連減')).join('＋') || '—'},
-    {h: '訊號', v: s => `<b>${hitCnt(s, B)}</b>`},
-  ];
-  const xi = {Bull: inter('Bull'), Bear: inter('Bear')};
-  const xTotal = B => Object.values(xi[B]).reduce((n, a) => n + a.length, 0);
-  const xSide = B => {
-    const o = xi[B], c = xCols(B);
-    return box('x3', '三指標共振', '均線＋RSI＋MACD 同時命中', o.all, c, `x${B}3`) +
-           box('xmd', '均線＋MACD', '兩項命中（不含三指標共振）', o.md, c, `x${B}MD`) +
-           box('xmr', '均線＋RSI', '兩項命中（不含三指標共振）', o.mr, c, `x${B}MR`) +
-           box('xrd', 'RSI＋MACD', '兩項命中（不含三指標共振）', o.rd, c, `x${B}RD`);
-  };
-
-  $('summary').innerHTML = [
-    ['掃描檔數', results.length, ''],
-    ['交集多方', xTotal('Bull'), 'bull'],
-    ['交集空方', xTotal('Bear'), 'bear'],
-    ['均線多方', uniq(['maBull30','maBull60','maBull100']), 'bull'],
-    ['均線空方', uniq(['maBear30','maBear60','maBear100']), 'bear'],
-    ['RSI 多方', lists.rsiBull.length, 'bull'],
-    ['RSI 空方', lists.rsiBear.length, 'bear'],
-    ['MACD 多方', uniq(['macdBullCross','macdBullExp']), 'bull'],
-    ['MACD 空方', uniq(['macdBearCross','macdBearExp']), 'bear'],
-  ].map(([t, v, c]) => `<div class="kpi ${c}"><div class="t">${t}</div><div class="v">${v}</div></div>`).join('');
-
-  $('board').innerHTML = `
-  <section class="ind xsec">
-    <h2>🎯 技術指標交集</h2>
-    <div class="def">同時命中兩類以上指標的個股，多空分開計算。三類為：均線（MA30／60／100 任一交叉，表內以 30／60／100 標示）、RSI(6)（≥80／≤20）、MACD（柱狀體翻正／翻負，或連 2 日放大「連增」／減少「連減」）。每檔只列在命中最多的組合中，依訊號數排序。</div>
-    <div class="malegend"><span><i style="background:#ff5fa2"></i>三指標共振</span><span><i style="background:#38bdf8"></i>均線＋MACD</span><span><i style="background:#a3e635"></i>均線＋RSI</span><span><i style="background:#fbbf24"></i>RSI＋MACD</span></div>
-    <div class="sides">
-      <div class="side bull"><h3>▲ 多方交集<span class="h3n">${xTotal('Bull')} 檔</span></h3>${xSide('Bull')}</div>
-      <div class="side bear"><h3>▼ 空方交集<span class="h3n">${xTotal('Bear')} 檔</span></h3>${xSide('Bear')}</div>
-    </div>
-  </section>
-
-  <section class="ind">
-    <h2>📈 均線指標</h2>
-    <div class="def">日線收盤價與 30／60／100 日均線交叉（近 3 個交易日內發生），並搭配均線方向</div>
-    <div class="malegend"><span><i style="background:#f5b83d"></i>MA30 短期</span><span><i style="background:#4da3ff"></i>MA60 中期</span><span><i style="background:#b07cff"></i>MA100 長期</span></div>
-    <div class="sides">
-      <div class="side bull"><h3>▲ 多方板塊</h3>
-        ${MA_N.map(n => maBox(n, `收盤價黃金交叉 MA${n}，且 MA${n} 上揚`, lists['maBull'+n], maCols(n)('maBull'), 'maBull'+n)).join('')}
-      </div>
-      <div class="side bear"><h3>▼ 空方板塊</h3>
-        ${MA_N.map(n => maBox(n, `收盤價死亡交叉 MA${n}，且 MA${n} 下彎`, lists['maBear'+n], maCols(n)('maBear'), 'maBear'+n)).join('')}
-      </div>
-    </div>
-  </section>
-
-  <section class="ind">
-    <h2>⚡ RSI 指標</h2>
-    <div class="def">RSI 參數 6，日線收盤</div>
-    <div class="sides">
-      <div class="side bull"><h3>▲ 多方板塊</h3>${cond('RSI(6) ≥ 80', lists.rsiBull.sort((a,b)=>b.rsi-a.rsi), rsiCols, 'rsiBull')}</div>
-      <div class="side bear"><h3>▼ 空方板塊</h3>${cond('RSI(6) ≤ 20', lists.rsiBear.sort((a,b)=>a.rsi-b.rsi), rsiCols, 'rsiBear')}</div>
-    </div>
-  </section>
-
-  <section class="ind">
-    <h2>📊 MACD 指標</h2>
-    <div class="def">MACD(12,26,9)，柱狀體 OSC＝DIF−MACD，日線</div>
-    <div class="malegend"><span><i style="background:#22c7d6"></i>零軸交叉（轉折）</span><span><i style="background:#ff8a3d"></i>柱狀體延續（動能）</span></div>
-    <div class="sides">
-      <div class="side bull"><h3>▲ 多方板塊</h3>
-        ${box('oscx', '交叉', '柱狀體黃金交叉 0（由 ≤0 轉 >0）', lists.macdBullCross, oscCols, 'macdBullCross')}
-        ${box('osce', '動能', '柱狀體 > 0，且連續 2 日放大', lists.macdBullExp, oscCols, 'macdBullExp')}
-      </div>
-      <div class="side bear"><h3>▼ 空方板塊</h3>
-        ${box('oscx', '交叉', '柱狀體死亡交叉 0（由 ≥0 轉 <0）', lists.macdBearCross, oscCols, 'macdBearCross')}
-        ${box('osce', '動能', '柱狀體 < 0，且連續 2 日減少', lists.macdBearExp, oscCols, 'macdBearExp')}
-      </div>
-    </div>
-  </section>`;
-}
-
-/* ---------- 篩選 ---------- */
-function filtered() {
-  const mkt = $('mkt').value, ind = $('ind').value, v20 = +$('v20').value;
-  const exx = $('exx').checked, nw = $('newOnly').checked;
-  const out = [];
-  for (const s of cur.stocks) {
-    if (mkt && s.mkt !== mkt) continue;
-    if (ind && s.ind !== ind) continue;
-    if (v20 && s.v20 != null && s.v20 < v20) continue;
-    let sig = s.sig;
-    if ((exx && s.exHit) || (nw && s.st)) {
-      sig = {};
-      for (const k in s.sig) {
-        if (exx && s.exHit && s.exHit.includes(k)) continue;
-        if (nw && s.st && s.st[k] !== 1) continue;
-        sig[k] = s.sig[k];
-      }
-    }
-    out.push(sig === s.sig ? s : {...s, sig});
-  }
-  return out;
-}
-const saveOpts = () => { try {
-  localStorage.setItem('sig_v20', $('v20').value);
-  localStorage.setItem('sig_exx', $('exx').checked ? '1' : '');
-  localStorage.setItem('sig_new', $('newOnly').checked ? '1' : '');
-} catch (e) {} };
-try {
-  const v = localStorage.getItem('sig_v20'); if (v != null) $('v20').value = v;
-  $('exx').checked = localStorage.getItem('sig_exx') === '1';
-  $('newOnly').checked = localStorage.getItem('sig_new') === '1';
-} catch (e) {}
-
-function fillIndustries() {
-  const keep = $('ind').value;
-  const inds = [...new Set(cur.stocks.map(s => s.ind).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
-  $('ind').innerHTML = '<option value="">全部產業</option>' + inds.map(i => `<option${i === keep ? ' selected' : ''}>${esc(i)}</option>`).join('');
-}
-
-function refreshBoard() {
-  render(filtered());
-  if ($('q').value.trim()) query();
-}
-
-/* ---------- 個股查詢 ---------- */
-function query() {
-  const kw = $('q').value.trim();
-  if (!kw) { $('queryBox').style.display = 'none'; return; }
-  const K = kw.toUpperCase();
-  const exact = cur.stocks.filter(s => s.id === K);
-  const hits = exact.length ? exact : cur.stocks.filter(s => s.id.startsWith(K) || s.name.includes(kw)).slice(0, 30);
-  $('queryBox').style.display = '';
-
-  if (!hits.length) {
-    const ex = cur.excluded || {};
-    const why = (ex.no_data || []).includes(K) ? 'Yahoo 查無日線資料'
-              : (ex.insufficient || []).includes(K) ? '資料未達 110 個交易日（可能為新上市櫃）'
-              : (ex.stale || []).includes(K) ? '最新資料非當日（可能停牌）'
-              : '不在上市櫃普通股清單內';
-    $('qInfo').textContent = `「${kw}」無結果：${why}`;
-    $('qResult').innerHTML = '';
-    return;
-  }
-  $('qInfo').textContent = `資料日期 ${cur.date}，共 ${hits.length} 檔${hits.length === 30 ? '（最多顯示 30 檔，請輸入更完整的代號或名稱）' : ''}`;
-  const tags = s => {
-    const ks = SIG_KEYS.filter(k => s.sig[k]);
-    if (!ks.length) return '<span class="tag none">無訊號</span>';
-    return ks.map(k => `<span class="tag ${/Bull/.test(k) ? 'bull' : 'bear'}">${/Bull/.test(k) ? '▲' : '▼'} ${SIG_LABEL[k]}` +
-      `${s.st && s.st[k] ? '・' + runTxt(s.st[k]) : ''}${s.exHit && s.exHit.includes(k) ? '・⚠除息影響' : ''}</span>`).join('');
-  };
-  $('qResult').innerHTML = `<div class="tbl"><table><thead><tr>
-      <th>代號</th><th>名稱</th><th>市場</th><th>產業</th><th>收盤</th><th>漲跌幅</th><th>20日均量</th>
-      <th>MA30</th><th>MA60</th><th>MA100</th><th>RSI(6)</th><th>DIF</th><th>MACD</th><th>OSC</th><th style="text-align:left">命中訊號</th>
-    </tr></thead><tbody>` +
-    hits.map(s => `<tr>
-      <td class="id">${esc(s.id)}</td><td>${esc(s.name)}${s.ex ? marks(s, '') : ''}</td><td class="txt">${MKT[s.mkt] || ''}</td><td class="txt">${esc(s.ind) || '—'}</td>
-      <td class="num">${f2(s.close)}</td><td class="num">${pct(s.chg)}</td><td class="num">${s.v20 == null ? '—' : s.v20.toLocaleString() + ' 張'}</td>
-      <td class="num">${f2(s.ma[30])}</td><td class="num">${f2(s.ma[60])}</td><td class="num">${f2(s.ma[100])}</td>
-      <td class="num">${f2(s.rsi)}</td><td class="num">${f2(s.dif)}</td><td class="num">${f2(s.macd)}</td>
-      <td class="num"><b class="${s.osc[2] > 0 ? 'up' : 'dn'}">${f2(s.osc[2])}</b></td>
-      <td class="txt" style="white-space:normal">${tags(s)}</td>
-    </tr>`).join('') + '</tbody></table></div>';
-}
-
-/* ---------- 切換日期 ---------- */
-async function show(date) {
-  $('err').textContent = '';
-  try {
-    if (!cache[date]) cache[date] = await load(date === latestDate ? 'latest.json' : `history/${date}.json`);
-    cur = cache[date];
-    const st = cur.stats || {};
-    $('meta').textContent = `資料日期 ${cur.date}｜清單 ${st.universe ?? '—'} 檔，有效 ${st.scanned ?? cur.stocks.length} 檔` +
-      `（未取得 ${st.no_data ?? 0}、資料不足 ${st.insufficient ?? 0}、非當日 ${st.stale ?? 0}）｜點選表格代號可查看個股明細` +
-      ((cur.ver || 1) < 2 ? '｜⚠ 此日期為舊格式資料，均量篩選、除息與新增標記不適用' : '');
-    $('dataDate').textContent = cur.date;
-    $('genTime').textContent = cur.generated_at ? new Date(cur.generated_at).toLocaleString('zh-TW', {hour12: false}) : '—';
-    fillIndustries();
-    refreshBoard();
-  } catch (e) {
-    $('err').textContent = `無法載入 ${date} 的資料：${e.message}`;
-  }
-}
-
-async function init() {
-  try {
-    let dates = [];
-    try {
-      const idx = await load('index.json');
-      latestDate = idx.latest; dates = idx.dates || [];
-    } catch (e) {
-      const lt = await load('latest.json');
-      latestDate = lt.date; cache[lt.date] = lt; dates = [{date: lt.date, count: lt.stocks.length}];
-    }
-    if (!latestDate) throw new Error('尚無資料');
-    $('date').innerHTML = dates.map(d => `<option value="${d.date}">${d.date}（${d.count} 檔）</option>`).join('');
-    const q = new URLSearchParams(location.search).get('q');
-    if (q) $('q').value = q;
-    await show(latestDate);
-  } catch (e) {
-    $('meta').textContent = '';
-    $('err').textContent = '尚無掃描資料：請到 GitHub repo 的 Actions 分頁手動執行「每日技術訊號掃描」。（' + e.message + '）';
-  }
-}
-
-$('date').addEventListener('change', e => show(e.target.value));
-$('mkt').addEventListener('change', refreshBoard);
-$('ind').addEventListener('change', refreshBoard);
-['v20', 'exx', 'newOnly'].forEach(id => $(id).addEventListener('change', () => { saveOpts(); refreshBoard(); }));
-$('qBtn').addEventListener('click', query);
-$('q').addEventListener('keydown', e => { if (e.key === 'Enter') query(); });
-$('qClr').addEventListener('click', () => { $('q').value = ''; query(); });
-$('board').addEventListener('click', async e => {
-  const x = e.target.closest('button[data-exp]');
-  if (x) {
-    const b = BLOCKS[+x.dataset.b]; if (!b || !b.list.length) return;
-    if (x.dataset.exp === 'csv') { exportCsv(b); flash(x, '✓ 已下載'); }
-    else { await copyIds(b); flash(x, `✓ ${b.list.length} 檔`); }
-    return;
-  }
-  const a = e.target.closest('a[data-q]'); if (!a) return;
-  e.preventDefault(); $('q').value = a.dataset.q; query();
-  $('queryBox').scrollIntoView({behavior: 'smooth', block: 'start'});
-});
-
-init();
-})();
-</script>
+<script src="assets/core.js"></script>
+<script src="assets/desktop.js"></script>
 </body>
 </html>

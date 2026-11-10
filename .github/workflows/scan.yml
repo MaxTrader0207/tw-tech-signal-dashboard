@@ -1,45 +1,98 @@
 name: 每日技術訊號掃描
 
+# 資料不再提交到 main：
+#   - 掃描結果存在獨立的 data 分支，每次以「單一提交強制推送」覆蓋，repo 不會隨時間膨脹
+#   - 網站由本 workflow 組合 docs/ 與 data 分支後，以 GitHub Actions 部署到 Pages
+#   - 前端（docs/）有改動推到 main 時，只重新部署、不重新掃描
+
 on:
   schedule:
     - cron: '50 6 * * 1-5'   # 台北 14:50（收盤後）
     - cron: '30 9 * * 1-5'   # 台北 17:30 補跑（Yahoo 收盤資料延遲或第一次失敗時）
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/scan.yml'
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 concurrency:
-  group: tech-signal-scan
+  group: tech-signal-pages
   cancel-in-progress: false
 
 jobs:
-  scan:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      scanned: ${{ steps.flag.outputs.scan }}
     steps:
       - uses: actions/checkout@v4
 
+      - name: 判斷是否需要掃描
+        id: flag
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then echo "scan=false" >> "$GITHUB_OUTPUT"; else echo "scan=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: 取回 data 分支（歷史資料）
+        run: |
+          if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
+            git fetch --depth 1 origin data
+            rm -rf docs/data && mkdir -p docs/data
+            git archive FETCH_HEAD | tar -x -C docs/data
+            echo "已還原 data 分支：$(ls docs/data/history 2>/dev/null | wc -l) 個歷史檔"
+          else
+            echo "尚無 data 分支，沿用 main 上的 docs/data（若有）"
+          fi
+
       - uses: actions/setup-python@v5
+        if: steps.flag.outputs.scan == 'true'
         with:
           python-version: '3.12'
           cache: pip
 
       - name: 安裝套件
+        if: steps.flag.outputs.scan == 'true'
         run: pip install -r requirements.txt
 
       - name: 掃描全市場
+        if: steps.flag.outputs.scan == 'true'
         run: python scripts/scan.py
 
-      - name: 提交資料
+      - name: 更新 data 分支（單一提交，不累積歷史）
+        if: steps.flag.outputs.scan == 'true'
         run: |
+          cd docs/data
+          git init -q -b data
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/data
-          if git diff --staged --quiet; then
-            echo "資料無變動"
-          else
-            git commit -m "data: $(TZ=Asia/Taipei date +%F) 技術訊號"
-            git pull --rebase
-            git push
-          fi
+          git add -A
+          git commit -q -m "data: $(TZ=Asia/Taipei date '+%F %H:%M') 技術訊號"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data
+          rm -rf .git
+
+      - name: 檢查網站資料
+        run: |
+          test -f docs/data/latest.json || { echo "::error::docs/data/latest.json 不存在，請先手動執行一次掃描"; exit 1; }
+          python3 -c "import json;p=json.load(open('docs/data/latest.json'));print('資料日期',p['date'],'有效',len(p['stocks']),'檔，格式 ver',p.get('ver',1))"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -20,7 +20,7 @@ import requests
 import yfinance as yf
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from indicators import analyze  # noqa: E402
+from indicators import MA_N, MIN_BARS, analyze, signal_series, x_group  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "docs" / "data"
@@ -33,6 +33,9 @@ INTRADAY_CUTOFF = dt.time(14, 30)  # 台北時間 14:30 前不採用當日 K 棒
 EX_WINDOW = 5                      # 近 N 個交易日內有除息者標示
 STREAK_MAX = 10                    # 在榜天數最多回推 N 日（≥N 顯示 N+）
 VOL_AVG_N = 20                     # 均量天數
+PERIOD = "2y"                      # Yahoo 下載區間（2 年：指標更收斂、回測樣本更多）
+HORIZONS = (5, 10, 20)             # 回測持有天數
+V_THRESH = (0, 100, 500, 1000, 5000)  # 回測依事件當日 20 日均量（張）分組，對應前端均量門檻
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
 MKT_NAME = {"TWSE": "上市", "TPEx": "上櫃"}
@@ -140,7 +143,7 @@ def fetch_yfinance(symbols):
         df = None
         for attempt in range(3):
             try:
-                df = yf.download(chunk, period="1y", interval="1d", auto_adjust=False,
+                df = yf.download(chunk, period=PERIOD, interval="1d", auto_adjust=False,
                                  actions=True, group_by="ticker", threads=True,
                                  progress=False, timeout=30)
                 break
@@ -166,7 +169,7 @@ def fetch_chart(sess, sym):
     for host in ("query1", "query2"):
         try:
             r = sess.get(f"https://{host}.finance.yahoo.com/v8/finance/chart/{sym}",
-                         params={"range": "1y", "interval": "1d", "events": "div,splits"}, timeout=20)
+                         params={"range": PERIOD, "interval": "1d", "events": "div,splits"}, timeout=20)
         except requests.RequestException:
             continue
         if r.status_code == 404:
@@ -269,24 +272,82 @@ def adjusted_rows(rows):
     return out
 
 
-def streaks(rows, keys):
-    """各訊號連續出現天數：逐日截斷資料重算，直到訊號消失（最多 STREAK_MAX 日）。"""
-    st = {k: 1 for k in keys}
-    alive = set(keys)
-    for back in range(1, STREAK_MAX):
-        pa = analyze(rows[:-back])
-        if not pa:
-            break
-        alive = {k for k in alive if k in pa["sig"]}
-        if not alive:
-            break
-        for k in alive:
-            st[k] += 1
+def streaks(flags, keys):
+    """各訊號連續出現的交易日數（含今日，最多 STREAK_MAX）。flags 為 signal_series 的逐日結果。"""
+    st = {}
+    for k in keys:
+        n = 0
+        for i in range(len(flags) - 1, max(-1, len(flags) - 1 - STREAK_MAX), -1):
+            if flags[i] is None or k not in flags[i]:
+                break
+            n += 1
+        st[k] = max(n, 1)
     return st
+
+
+class Backtest:
+    """訊號首日出現後持有 h 日的報酬統計（以還原權息價計算，避免除息干擾）。
+
+    事件：某訊號在當日出現、前一日沒有（交集組合同理：當日進入該組合）。
+    勝率：多方訊號＝上漲機率，空方訊號＝下跌機率。基準＝同期間所有個股每日的持有報酬。
+    """
+
+    def __init__(self):
+        self.ev = {t: {} for t in V_THRESH}
+        self.base = {t: {h: [0, 0.0, 0] for h in HORIZONS} for t in V_THRESH}
+        self.d0, self.d1 = None, None
+
+    def add(self, rows, flags):
+        if len(rows) < MIN_BARS + 2:
+            return
+        px = [r["adj"] for r in rows] if all(r.get("adj") for r in rows) else [r["close"] for r in rows]
+        vol = [r.get("volume", 0) for r in rows]
+        csum = [0]
+        for v in vol:
+            csum.append(csum[-1] + v)
+        L = len(rows)
+        for i in range(MIN_BARS, L - min(HORIZONS)):
+            fi, fp = flags[i], flags[i - 1]
+            if fi is None or fp is None:
+                continue
+            lo = max(0, i - VOL_AVG_N + 1)
+            v20 = (csum[i + 1] - csum[lo]) / (i + 1 - lo) / 1000
+            ths = [t for t in V_THRESH if v20 >= t]
+            rets = {h: px[i + h] / px[i] - 1 for h in HORIZONS if i + h < L}
+            events = list(fi - fp)
+            for side in ("Bull", "Bear"):
+                g = x_group(fi, side)
+                if g and g != x_group(fp, side):
+                    events.append(f"x{side}{g}")
+            for t in ths:
+                for h, rt in rets.items():
+                    b = self.base[t][h]
+                    b[0] += 1; b[1] += rt; b[2] += rt > 0
+                for k in events:
+                    bull = "Bull" in k
+                    hs = self.ev[t].setdefault(k, {h: [0, 0.0, 0] for h in HORIZONS})
+                    for h, rt in rets.items():
+                        e = hs[h]
+                        e[0] += 1; e[1] += rt; e[2] += (rt > 0) if bull else (rt < 0)
+            if events:
+                d = rows[i]["date"]
+                self.d0 = d if self.d0 is None or d < self.d0 else self.d0
+                self.d1 = d if self.d1 is None or d > self.d1 else self.d1
+
+    def result(self):
+        def pack(n, s, w):
+            return [n, round(s / n * 100, 2), round(w / n * 100, 1)] if n else [0, None, None]
+        return {
+            "from": self.d0, "to": self.d1, "h": list(HORIZONS),
+            "base": {str(t): {str(h): pack(*v) for h, v in hs.items()} for t, hs in self.base.items()},
+            "by": {str(t): {k: {str(h): pack(*v) for h, v in hs.items()} for k, hs in d.items()}
+                   for t, d in self.ev.items()},
+        }
 
 
 def build_payload(stocks, prices, now):
     results, no_data, short = [], [], []
+    bt = Backtest()
     for s in stocks:
         rows = prices.get(ysym(s))
         if not rows:
@@ -301,8 +362,10 @@ def build_payload(stocks, prices, now):
         item.update(compact(a))
         vols = [x["volume"] for x in rows[-VOL_AVG_N:]]
         item["v20"] = round(sum(vols) / len(vols) / 1000) if vols else 0      # 20 日均量（張）
+        srows, flags = signal_series(rows)
+        bt.add(srows, flags)
         if a["sig"]:
-            item["st"] = streaks(rows, list(a["sig"]))
+            item["st"] = streaks(flags, list(a["sig"]))
         ex = ex_dividend(rows)
         if ex:
             item["ex"] = ex
@@ -322,7 +385,7 @@ def build_payload(stocks, prices, now):
     fresh.sort(key=lambda x: x["id"])
     return {
         "date": max_date,
-        "ver": 2,                       # 2：含 v20／st／ex／exHit
+        "ver": 3,                       # 2：含 v20／st／ex／exHit；3：再加回測 bt
         "generated_at": now.isoformat(timespec="seconds"),
         "source": "Yahoo Finance 日線與配息（yfinance）；股票清單：臺灣證券交易所 ISIN 公告／OpenAPI",
         "stats": {
@@ -330,6 +393,7 @@ def build_payload(stocks, prices, now):
             "no_data": len(no_data), "insufficient": len(short), "stale": len(stale),
         },
         "excluded": {"no_data": no_data, "insufficient": short, "stale": stale},
+        "bt": bt.result(),
         "stocks": fresh,
     }
 

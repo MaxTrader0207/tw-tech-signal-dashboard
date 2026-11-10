@@ -69,6 +69,76 @@ def macd(h, l, c):
     return dif, sig, osc
 
 
+def signal_series(rows):
+    """逐日計算命中訊號，規則與 analyze 完全相同。
+
+    所有指標皆為因果計算（只用當日及以前資料），因此第 i 日的結果
+    等同於 analyze(rows[:i+1])。回傳 (排序過濾後 rows, 每日訊號集合 list)，
+    資料不足的日子為 None。
+    """
+    rows = sorted(
+        (r for r in rows if r["close"] > 0 and r["high"] > 0 and r["low"] > 0),
+        key=lambda r: r["date"],
+    )
+    L = len(rows)
+    out = [None] * L
+    if L < MIN_BARS:
+        return rows, out
+    c = [float(r["close"]) for r in rows]
+    h = [float(r["high"]) for r in rows]
+    l = [float(r["low"]) for r in rows]
+    mas = {n: sma(c, n) for n in MA_N}
+    r6 = rsi(c, 6)
+    _, _, osc = macd(h, l, c)
+    for i in range(MIN_BARS - 1, L):
+        s = set()
+        for n, m in mas.items():
+            gx = dx = False
+            for j in range(i, i - 3, -1):
+                if m[j - 1] is None:
+                    continue
+                if c[j - 1] <= m[j - 1] and c[j] > m[j]:
+                    gx = True
+                if c[j - 1] >= m[j - 1] and c[j] < m[j]:
+                    dx = True
+            slope = m[i] - m[i - 1]
+            if gx and slope > 0:
+                s.add(f"maBull{n}")
+            if dx and slope < 0:
+                s.add(f"maBear{n}")
+        if r6[i] >= 80:
+            s.add("rsiBull")
+        if r6[i] <= 20:
+            s.add("rsiBear")
+        o0, o1, o2 = osc[i], osc[i - 1], osc[i - 2]
+        if o1 <= 0 and o0 > 0:
+            s.add("macdBullCross")
+        if o0 > 0 and o1 > 0 and o0 > o1 and o1 > o2:
+            s.add("macdBullExp")
+        if o1 >= 0 and o0 < 0:
+            s.add("macdBearCross")
+        if o0 < 0 and o1 < 0 and o0 < o1 and o1 < o2:
+            s.add("macdBearExp")
+        out[i] = s
+    return rows, out
+
+
+def x_group(sigs, side):
+    """交集分組：'3' 三指標共振、'MD' 均線+MACD、'MR' 均線+RSI、'RD' RSI+MACD，未達兩類回傳 None。"""
+    m = any(f"ma{side}{n}" in sigs for n in MA_N)
+    r = f"rsi{side}" in sigs
+    d = f"macd{side}Cross" in sigs or f"macd{side}Exp" in sigs
+    if m and r and d:
+        return "3"
+    if m and d:
+        return "MD"
+    if m and r:
+        return "MR"
+    if r and d:
+        return "RD"
+    return None
+
+
 def analyze(rows):
     """rows: [{date, close, high, low, volume}]；回傳指標與命中條件，資料不足回傳 None。"""
     rows = sorted(
