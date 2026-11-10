@@ -13,6 +13,7 @@ import json
 import re
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pandas as pd
@@ -28,6 +29,7 @@ HIST = DATA / "history"
 KEEP_DAYS = 60                     # 保留歷史天數
 BATCH = 80                         # yfinance 每批檔數
 MIN_FRESH = 500                    # 有效檔數低於此值視為抓取異常，不覆蓋資料
+LIST_CACHE_DAYS = 7                # 股票清單（含產業別）快取天數；期間內以 OpenAPI 增減個股
 TPE = dt.timezone(dt.timedelta(hours=8))
 INTRADAY_CUTOFF = dt.time(14, 30)  # 台北時間 14:30 前不採用當日 K 棒
 EX_WINDOW = 5                      # 近 N 個交易日內有除息者標示
@@ -50,6 +52,9 @@ def is_common(code):
     return bool(re.fullmatch(r"\d{4}", code)) and not code.startswith("00")
 
 
+SKIPPED = set()   # ISIN 中 4 碼但非普通股（TDR 等），日常 OpenAPI 增補時排除
+
+
 def isin_list(mode, market):
     """證交所 ISIN 公告頁：strMode=2 上市、4 上櫃；以 CFICode=ESVUFR 篩選普通股。"""
     r = requests.get(f"https://isin.twse.com.tw/isin/C_public.jsp?strMode={mode}",
@@ -63,7 +68,10 @@ def isin_list(mode, market):
         if len(tds) < 6:
             continue
         m = re.match(r"^(\d{4})[\s　]+(.+)$", tds[0])
-        if not m or tds[5] != "ESVUFR" or not is_common(m.group(1)):
+        if not m:
+            continue
+        if tds[5] != "ESVUFR" or not is_common(m.group(1)):
+            SKIPPED.add(m.group(1))
             continue
         out.append({"id": m.group(1), "name": m.group(2).strip(), "mkt": market, "ind": tds[4]})
     return out
@@ -85,28 +93,72 @@ def openapi_list(market):
     return out
 
 
-def stock_universe():
-    stocks = []
-    for mode, market, floor in ((2, "TWSE", 500), (4, "TPEx", 300)):
-        lst = []
+def _full_list(mode, market, floor):
+    lst = []
+    t0 = time.time()
+    try:
+        lst = isin_list(mode, market)
+        log(f"[清單] ISIN {MKT_NAME[market]} {len(lst)} 檔（{time.time() - t0:.0f}s）")
+    except Exception as e:  # noqa: BLE001
+        log(f"[清單] ISIN {MKT_NAME[market]} 失敗（{time.time() - t0:.0f}s）：{e}")
+    if len(lst) < floor:
         try:
-            lst = isin_list(mode, market)
-            log(f"[清單] ISIN {MKT_NAME[market]} {len(lst)} 檔")
+            lst = openapi_list(market)
+            log(f"[清單] OpenAPI {MKT_NAME[market]} {len(lst)} 檔")
         except Exception as e:  # noqa: BLE001
-            log(f"[清單] ISIN {MKT_NAME[market]} 失敗：{e}")
-        if len(lst) < floor:
-            try:
-                lst = openapi_list(market)
-                log(f"[清單] OpenAPI {MKT_NAME[market]} {len(lst)} 檔")
-            except Exception as e:  # noqa: BLE001
-                log(f"[清單] OpenAPI {MKT_NAME[market]} 失敗：{e}")
-        stocks += lst
+            log(f"[清單] OpenAPI {MKT_NAME[market]} 失敗：{e}")
+    return lst
+
+
+def _dedupe(stocks):
     seen, uniq = set(), []
     for s in stocks:
         if s["id"] not in seen:
             seen.add(s["id"])
             uniq.append(s)
     return uniq
+
+
+def stock_universe(now):
+    """股票清單：快取 LIST_CACHE_DAYS 天（含產業別），期間內以 OpenAPI 補新上市、剔除已下市。"""
+    cache = DATA / "universe.json"
+    today = now.date()
+    if cache.exists():
+        try:
+            c = json.loads(cache.read_text(encoding="utf-8"))
+            age = (today - dt.date.fromisoformat(c["date"])).days
+            if 0 <= age < LIST_CACHE_DAYS and len(c["stocks"]) >= 1000:
+                stocks = c["stocks"]
+                with ThreadPoolExecutor(2) as ex:
+                    res = list(ex.map(lambda m: _try(openapi_list, m), ("TWSE", "TPEx")))
+                if all(res):
+                    live = {s["id"]: s for lst in res for s in lst}
+                    known = {s["id"] for s in stocks}
+                    skip = set(c.get("skip", []))
+                    kept = [s for s in stocks if s["id"] in live]
+                    added = [live[i] for i in live if i not in known and i not in skip]
+                    log(f"[清單] 使用 {c['date']} 快取 {len(stocks)} 檔；OpenAPI 新增 {len(added)}、剔除 {len(stocks) - len(kept)}")
+                    return _dedupe(kept + added)
+                log(f"[清單] 使用 {c['date']} 快取 {len(stocks)} 檔（OpenAPI 無回應，未增減）")
+                return stocks
+        except Exception as e:  # noqa: BLE001
+            log(f"[清單] 快取讀取失敗：{e}")
+    with ThreadPoolExecutor(2) as ex:
+        parts = list(ex.map(lambda a: _full_list(*a), ((2, "TWSE", 500), (4, "TPEx", 300))))
+    stocks = _dedupe(parts[0] + parts[1])
+    if len(stocks) >= 1000:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps({"date": today.isoformat(), "stocks": stocks, "skip": sorted(SKIPPED)}, ensure_ascii=False,
+                                    separators=(",", ":")), encoding="utf-8")
+    return stocks
+
+
+def _try(fn, *a):
+    try:
+        return fn(*a)
+    except Exception as e:  # noqa: BLE001
+        log(f"[清單] {fn.__name__}{a} 失敗：{e}")
+        return None
 
 
 # ---------------------------------------------------------------- 2. Yahoo 日線
@@ -431,11 +483,15 @@ def write_outputs(payload):
 def main():
     now = dt.datetime.now(TPE)
     log(f"開始掃描 {now:%Y-%m-%d %H:%M}（台北）")
-    stocks = stock_universe()
+    t0 = time.time()
+    stocks = stock_universe(now)
     if len(stocks) < 1000:
         sys.exit(f"股票清單只有 {len(stocks)} 檔，疑似來源異常，中止。")
+    t1 = time.time()
     prices = fetch_prices([ysym(s) for s in stocks])
+    t2 = time.time()
     payload = build_payload(stocks, prices, now)
+    log(f"[耗時] 清單 {t1 - t0:.0f}s、行情 {t2 - t1:.0f}s、計算 {time.time() - t2:.0f}s")
     log(f"資料日期 {payload['date']}，統計 {payload['stats']}")
     if payload["stats"]["scanned"] < MIN_FRESH:
         sys.exit(f"有效檔數僅 {payload['stats']['scanned']}，疑似 Yahoo 抓取異常，不覆蓋既有資料。")
