@@ -202,7 +202,10 @@ SC.bt = (cur, key, v20) => {
     const v = d && d[String(h)] || [0, null, null];
     const b = base[String(h)] || [0, null, null];
     const baseWin = b[2] == null ? null : (bull ? b[2] : (b[3] != null ? b[3] : 100 - b[2]));   // 空方基準＝下跌率（不含平盤）
-    return {h, n: v[0], avg: v[1], win: v[2], baseWin, baseAvg: b[1]};
+    // 報酬優先用中位數（不受極端值影響），舊資料沒有中位數時退回平均數
+    const med = v[3] != null ? v[3] : null;
+    return {h, n: v[0], avg: v[1], med, ret: med != null ? med : v[1], retLabel: med != null ? '中位報酬' : '均報',
+            win: v[2], baseWin, baseRet: b[4] != null ? b[4] : b[1]};
   });
   return {rows, n: rows[0].n, bull, from: bt.from, to: bt.to};
 };
@@ -215,10 +218,11 @@ SC.btHtml = (cur, key, v20, opts = {}) => {
     if (x.win == null) return '';
     const diff = x.baseWin == null ? 0 : x.win - x.baseWin;
     const c = few ? '' : diff >= 3 ? 'good' : diff <= -3 ? 'poor' : '';
-    const avgCls = x.avg > 0 ? 'up' : x.avg < 0 ? 'dn' : '';
-    return `<span class="bt-i"><em>${x.h}日</em>${r.bull ? '漲' : '跌'}機率 <b class="${c}">${x.win.toFixed(0)}%</b>` +
+    const rc = x.ret > 0 ? 'up' : x.ret < 0 ? 'dn' : '';
+    const tip = `平均報酬 ${x.avg > 0 ? '+' : ''}${x.avg.toFixed(2)}%；基準${x.retLabel} ${x.baseRet == null ? '—' : (x.baseRet > 0 ? '+' : '') + x.baseRet.toFixed(2) + '%'}`;
+    return `<span class="bt-i" title="${tip}"><em>${x.h}日</em>${r.bull ? '漲' : '跌'}機率 <b class="${c}">${x.win.toFixed(0)}%</b>` +
       `${opts.short ? '' : `<small>（基準 ${x.baseWin == null ? '—' : x.baseWin.toFixed(0) + '%'}）</small>`}` +
-      ` 均報 <b class="${avgCls}">${x.avg > 0 ? '+' : ''}${x.avg.toFixed(2)}%</b></span>`;
+      ` ${x.retLabel} <b class="${rc}">${x.ret > 0 ? '+' : ''}${x.ret.toFixed(2)}%</b></span>`;
   }).join('');
   return `<div class="bt" title="近 ${r.from || ''}～${r.to || ''} 期間，訊號首日出現後持有 N 日的表現（還原權息價）。多方看上漲機率、空方看下跌機率；基準為同期所有個股。">` +
     `<span class="bt-h">📊 歷史回測 <small>n=${SC.int(r.n)}${few ? '・樣本不足' : ''}</small></span>${items}</div>`;

@@ -289,12 +289,14 @@ class Backtest:
     """訊號首日出現後持有 h 日的報酬統計（以還原權息價計算，避免除息干擾）。
 
     事件：某訊號在當日出現、前一日沒有（交集組合同理：當日進入該組合）。
-    勝率：多方訊號＝上漲機率，空方訊號＝下跌機率。基準＝同期間所有個股每日的持有報酬。
+    勝率：多方訊號＝上漲機率，空方訊號＝下跌機率（平盤不計）。
+    報酬同時給平均數與中位數；中位數不受少數極端值（飆股或還原價異常）影響。
+    基準＝同期間所有個股每日的持有報酬。
     """
 
     def __init__(self):
-        self.ev = {t: {} for t in V_THRESH}
-        self.base = {t: {h: [0, 0.0, 0, 0] for h in HORIZONS} for t in V_THRESH}   # n、報酬和、上漲數、下跌數
+        self.ev = {}                              # key -> [(v20, {h: ret})]
+        self.base = []                            # [(v20, {h: ret})]
         self.d0, self.d1 = None, None
 
     def add(self, rows, flags):
@@ -312,39 +314,41 @@ class Backtest:
                 continue
             lo = max(0, i - VOL_AVG_N + 1)
             v20 = (csum[i + 1] - csum[lo]) / (i + 1 - lo) / 1000
-            ths = [t for t in V_THRESH if v20 >= t]
             rets = {h: px[i + h] / px[i] - 1 for h in HORIZONS if i + h < L}
+            rec = (v20, rets)
+            self.base.append(rec)
             events = list(fi - fp)
             for side in ("Bull", "Bear"):
                 g = x_group(fi, side)
                 if g and g != x_group(fp, side):
                     events.append(f"x{side}{g}")
-            for t in ths:
-                for h, rt in rets.items():
-                    b = self.base[t][h]
-                    b[0] += 1; b[1] += rt; b[2] += rt > 0; b[3] += rt < 0
-                for k in events:
-                    bull = "Bull" in k
-                    hs = self.ev[t].setdefault(k, {h: [0, 0.0, 0] for h in HORIZONS})
-                    for h, rt in rets.items():
-                        e = hs[h]
-                        e[0] += 1; e[1] += rt; e[2] += (rt > 0) if bull else (rt < 0)
+            for k in events:
+                self.ev.setdefault(k, []).append(rec)
             if events:
                 d = rows[i]["date"]
                 self.d0 = d if self.d0 is None or d < self.d0 else self.d0
                 self.d1 = d if self.d1 is None or d > self.d1 else self.d1
 
+    @staticmethod
+    def _stats(recs, t, h, bull=None):
+        xs = sorted(r[1][h] for r in recs if r[0] >= t and h in r[1])
+        n = len(xs)
+        if not n:
+            return [0, None, None, None] if bull is not None else [0, None, None, None, None]
+        mean = sum(xs) / n * 100
+        med = (xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2) * 100
+        up = sum(x > 0 for x in xs) / n * 100
+        dn = sum(x < 0 for x in xs) / n * 100
+        if bull is None:   # 基準：n、平均、上漲%、下跌%、中位數
+            return [n, round(mean, 2), round(up, 1), round(dn, 1), round(med, 2)]
+        return [n, round(mean, 2), round(up if bull else dn, 1), round(med, 2)]   # n、平均、勝率、中位數
+
     def result(self):
-        def pack(n, s, w, dn=None):
-            if not n:
-                return [0, None, None] if dn is None else [0, None, None, None]
-            out = [n, round(s / n * 100, 2), round(w / n * 100, 1)]
-            return out if dn is None else out + [round(dn / n * 100, 1)]
         return {
             "from": self.d0, "to": self.d1, "h": list(HORIZONS),
-            "base": {str(t): {str(h): pack(*v) for h, v in hs.items()} for t, hs in self.base.items()},
-            "by": {str(t): {k: {str(h): pack(*v) for h, v in hs.items()} for k, hs in d.items()}
-                   for t, d in self.ev.items()},
+            "base": {str(t): {str(h): self._stats(self.base, t, h) for h in HORIZONS} for t in V_THRESH},
+            "by": {str(t): {k: {str(h): self._stats(recs, t, h, "Bull" in k) for h in HORIZONS}
+                            for k, recs in self.ev.items()} for t in V_THRESH},
         }
 
 
