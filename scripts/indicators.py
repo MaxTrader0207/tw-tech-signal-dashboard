@@ -161,11 +161,11 @@ def weekly_series(rows):
 
 def last_week_state(wk_of_row, weeks, i):
     """第 i 個交易日的「上週」週線狀態：
-    (上週收盤, 上週週MA10, 上週最後交易日, 前一週週MA10, 上週週RSI6)；資料不足回傳 None。"""
+    (上週收盤, 上週週MA10, 上週最後交易日, 前一週週MA10, 上週週RSI6, 前一週週RSI6)；資料不足回傳 None。"""
     k = wk_of_row[i] - 1
-    if k < 1 or weeks[k]["ma"] is None or weeks[k - 1]["ma"] is None or weeks[k]["r6"] is None:
+    if k < 1 or weeks[k]["ma"] is None or weeks[k - 1]["ma"] is None or weeks[k]["r6"] is None or weeks[k - 1]["r6"] is None:
         return None
-    return weeks[k]["c"], weeks[k]["ma"], weeks[k]["d"], weeks[k - 1]["ma"], weeks[k]["r6"]
+    return weeks[k]["c"], weeks[k]["ma"], weeks[k]["d"], weeks[k - 1]["ma"], weeks[k]["r6"], weeks[k - 1]["r6"]
 
 
 def x_group(sigs, side):
