@@ -1,0 +1,45 @@
+name: 每日技術訊號掃描
+
+on:
+  schedule:
+    - cron: '50 6 * * 1-5'   # 台北 14:50（收盤後）
+    - cron: '30 9 * * 1-5'   # 台北 17:30 補跑（Yahoo 收盤資料延遲或第一次失敗時）
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tech-signal-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: 安裝套件
+        run: pip install -r requirements.txt
+
+      - name: 掃描全市場
+        run: python scripts/scan.py
+
+      - name: 提交資料
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data
+          if git diff --staged --quiet; then
+            echo "資料無變動"
+          else
+            git commit -m "data: $(TZ=Asia/Taipei date +%F) 技術訊號"
+            git pull --rebase
+            git push
+          fi
