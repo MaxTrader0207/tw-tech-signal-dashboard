@@ -158,6 +158,7 @@ main{padding:10px 12px}
 .wbtn.on{color:var(--accent);border-color:var(--accent);background:rgba(245,184,61,.12)}
 .sec2{display:flex;align-items:center;justify-content:space-between;margin:14px 2px 8px;font-weight:800}
 .sec2 small{color:var(--muted);font-weight:400}
+.wkt{display:block;color:var(--accent);font-size:.76rem;font-weight:700;margin-top:2px}
 
 footer{color:var(--muted);font-size:.72rem;padding:14px 14px 0;line-height:1.6}
 footer .warn{background:#1c1410;border:1px solid #5a3c14;border-radius:10px;padding:10px 12px;color:#f3d9a8;margin-top:8px}
@@ -175,6 +176,7 @@ footer .warn{background:#1c1410;border:1px solid #5a3c14;border-radius:10px;padd
     <label class="f"><span class="lb">市場</span><select id="mkt"><option value="">全部</option><option value="TWSE">上市</option><option value="TPEx">上櫃</option></select></label>
     <label class="f"><span class="lb">產業</span><select id="ind"><option value="">全部</option></select></label>
     <label class="f"><span class="lb">均量</span><select id="v20"><option value="0">不限</option><option value="100" selected>≥100張</option><option value="500">≥500張</option><option value="1000">≥1000張</option><option value="5000">≥5000張</option></select></label>
+    <button class="f tg" id="wkF" type="button">週線濾網</button>
     <button class="f tg" id="exx" type="button">排除除息影響</button>
     <button class="f tg" id="newOnly" type="button">只看今日新增</button>
     <button class="f tg" id="watchOnly" type="button">⭐ 只看自選</button>
@@ -196,7 +198,7 @@ footer .warn{background:#1c1410;border:1px solid #5a3c14;border-radius:10px;padd
 
 <footer>
   資料來源：Yahoo Finance 日線；股票清單：臺灣證券交易所 ISIN 公告。GitHub Actions 於交易日收盤後自動掃描全市場上市櫃普通股。
-  指標採三竹公式：MA 收盤價簡單均線；RSI(6) Wilder 平滑；MACD 以 DI＝(H＋L＋2C)÷4 計算 DIF＝EMA12−EMA26、MACD＝EMA9(DIF)、OSC＝DIF−MACD。均線交叉以最近 3 個交易日為準。「新／連N」為訊號連續出現的交易日數；「除息」為近 5 個交易日內依 Yahoo 配息與還原因子偵測，「⚠除息」表示改用還原權息價計算時該訊號不成立。「歷史回測」統計近兩年訊號首日出現後持有 5／10／20 個交易日的表現（還原權息價），依當日 20 日均量分組並隨均量篩選切換；多方看上漲機率、空方看下跌機率，金色＝高於同期全體個股基準 3 個百分點以上；不含交易成本，過去表現不代表未來。自選股存在本機瀏覽器。
+  指標採三竹公式：MA 收盤價簡單均線；RSI(6) Wilder 平滑；MACD 以 DI＝(H＋L＋2C)÷4 計算 DIF＝EMA12−EMA26、MACD＝EMA9(DIF)、OSC＝DIF−MACD。均線交叉以最近 3 個交易日為準。「新／連N」為訊號連續出現的交易日數；「除息」為近 5 個交易日內依 Yahoo 配息與還原因子偵測，「⚠除息」表示改用還原權息價計算時該訊號不成立。「歷史回測」統計近兩年訊號首日出現後持有 5／10／20 個交易日的表現（還原權息價），依當日 20 日均量分組並隨均量篩選切換；多方看上漲機率、空方看下跌機率，金色＝高於同期全體個股基準 3 個百分點以上；不含交易成本，過去表現不代表未來。自選股存在本機瀏覽器。「週線濾網」開啟時，多方區塊另需上週週線收盤站上上週週線 10MA，空方區塊另需跌破。
   <div class="warn">⚠ 投資警語：本頁僅供技術分析研究與資訊參考，不構成任何投資建議或買賣邀約。技術指標具落後性，投資一定有風險，投資人應自行判斷並承擔所有投資結果與責任。</div>
 </footer>
 

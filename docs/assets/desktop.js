@@ -15,16 +15,21 @@ $('v20').value = SC.prefs.get('v20', '100');
 $('exx').checked = SC.prefs.get('exx', '') === '1';
 $('newOnly').checked = SC.prefs.get('new', '') === '1';
 $('watchOnly').checked = SC.prefs.get('watchOnly', '') === '1';
+$('wkF').checked = SC.prefs.get('wk', '1') === '1';
 const saveOpts = () => {
   SC.prefs.set('v20', $('v20').value);
   SC.prefs.set('exx', $('exx').checked ? '1' : '');
   SC.prefs.set('new', $('newOnly').checked ? '1' : '');
   SC.prefs.set('watchOnly', $('watchOnly').checked ? '1' : '');
+  SC.prefs.set('wk', $('wkF').checked ? '1' : '0');
 };
 const opts = () => ({
   mkt: $('mkt').value, ind: $('ind').value, v20: +$('v20').value,
   exx: $('exx').checked, nw: $('newOnly').checked, watchOnly: $('watchOnly').checked,
+  wk: $('wkF').checked, wkStrict: !!cur && (cur.ver || 1) >= 4,
 });
+const wkOn = () => $('wkF').checked && !!cur && (cur.ver || 1) >= 4;
+const wkTitle = key => wkOn() ? `<span class="wkt">${SC.wkSfx(key)}</span>` : '';
 
 /* ---------- 自選股 ---------- */
 function syncWatchUI() {
@@ -57,11 +62,11 @@ function exportCsv(b) {
   SC.saveCsv(SC.csvName(cur, b.side, b.key), [head, ...rows], false);
 }
 
-const bt = key => SC.btHtml(cur, key, +$('v20').value);
+const bt = key => SC.btHtml(cur, key, +$('v20').value, {wk: wkOn()});
 const cond = (title, list, cols, key) =>
-  `<div class="cond"><h4><span>${title}</span><span class="n">${list.length}</span>${expBtns(key, plain(title), list, cols)}</h4>${bt(key)}${table(list, cols, key)}</div>`;
+  `<div class="cond"><h4><span>${title}${wkTitle(key)}</span><span class="n">${list.length}</span>${expBtns(key, plain(title) + (wkOn() ? SC.wkSfx(key) : ''), list, cols)}</h4>${bt(key)}${table(list, cols, key)}</div>`;
 const box = (cls, badge, title, list, cols, key) =>
-  `<div class="mabox ${cls}"><h4><span class="badge">${badge}</span><span class="t">${title}</span><span class="n">${list.length}</span>${expBtns(key, `${badge}｜${plain(title)}`, list, cols)}</h4>${bt(key)}${table(list, cols, key)}</div>`;
+  `<div class="mabox ${cls}"><h4><span class="badge">${badge}</span><span class="t">${title}${wkTitle(key)}</span><span class="n">${list.length}</span>${expBtns(key, `${badge}｜${plain(title)}${wkOn() ? SC.wkSfx(key) : ''}`, list, cols)}</h4>${bt(key)}${table(list, cols, key)}</div>`;
 const maBox = (n, title, list, cols, key) => box(`ma${n}`, `MA${n}`, title, list, cols, key);
 
 /* ---------- 看板 ---------- */
@@ -185,14 +190,14 @@ function query() {
     return ks.length ? ks.map(k => SC.sigTag(s, k)).join('') : '<span class="tag none">無訊號</span>';
   };
   $('qResult').innerHTML = `<div class="tbl"><table><thead><tr>
-      <th>代號</th><th>名稱</th><th>自選</th><th>市場</th><th>產業</th><th>收盤</th><th>漲跌幅</th><th>20日均量</th>
+      <th>代號</th><th>名稱</th><th>自選</th><th>市場</th><th>產業</th><th>收盤</th><th>漲跌幅</th><th>20日均量</th><th>上週週收／週MA10</th>
       <th>MA30</th><th>MA60</th><th>MA100</th><th>RSI(6)</th><th>DIF</th><th>MACD</th><th>OSC</th><th style="text-align:left">命中訊號</th>
     </tr></thead><tbody>` +
     hits.map(s => `<tr${SC.watch.has(s.id) ? ' class="w"' : ''}>
       <td class="id">${esc(s.id)}</td><td>${SC.star(s)}${esc(s.name)}${s.ex ? SC.marks(s, '') : ''}</td>
       <td class="txt"><button class="sbtn${SC.watch.has(s.id) ? ' on' : ''}" data-star="${esc(s.id)}" title="加入／移除自選股">${SC.watch.has(s.id) ? '★' : '☆'}</button></td>
       <td class="txt">${MKT[s.mkt] || ''}</td><td class="txt">${esc(s.ind) || '—'}</td>
-      <td class="num">${f2(s.close)}</td><td class="num">${pct(s.chg)}</td><td class="num">${s.v20 == null ? '—' : SC.int(s.v20) + ' 張'}</td>
+      <td class="num">${f2(s.close)}</td><td class="num">${pct(s.chg)}</td><td class="num">${s.v20 == null ? '—' : SC.int(s.v20) + ' 張'}</td><td class="num">${SC.wkCell(s)}</td>
       <td class="num">${f2(s.ma[30])}</td><td class="num">${f2(s.ma[60])}</td><td class="num">${f2(s.ma[100])}</td>
       <td class="num">${f2(s.rsi)}</td><td class="num">${f2(s.dif)}</td><td class="num">${f2(s.macd)}</td>
       <td class="num"><b class="${s.osc[2] > 0 ? 'up' : 'dn'}">${f2(s.osc[2])}</b></td>
@@ -209,7 +214,8 @@ async function show(date) {
     const ver = cur.ver || 1;
     $('meta').textContent = `資料日期 ${cur.date}｜清單 ${st.universe ?? '—'} 檔，有效 ${st.scanned ?? cur.stocks.length} 檔` +
       `（未取得 ${st.no_data ?? 0}、資料不足 ${st.insufficient ?? 0}、非當日 ${st.stale ?? 0}）｜點選表格代號可查看個股明細` +
-      (ver < 2 ? '｜⚠ 此日期為舊格式資料，均量篩選、除息與新增標記不適用' : ver < 3 ? '｜此日期資料尚無歷史回測' : '');
+      (ver < 2 ? '｜⚠ 此日期為舊格式資料，均量篩選、除息與新增標記不適用' : ver < 3 ? '｜此日期資料尚無歷史回測' : '') +
+      (ver < 4 ? '｜⚠ 此日期資料尚無週線資訊，週線濾網不適用' : '');
     $('btNote').innerHTML = cur.bt
       ? `<span>📊 歷史回測期間 ${SC.btPeriod(cur)}：訊號首日出現後持有 5／10／20 個交易日，多方看上漲機率、空方看下跌機率；<b style="color:var(--accent)">金色</b>＝高於同期全體個股基準 3 個百分點以上。回測結果隨「20 日均量」篩選切換。</span>`
       : '';
@@ -240,7 +246,7 @@ async function init() {
 $('date').addEventListener('change', e => show(e.target.value));
 $('mkt').addEventListener('change', refreshBoard);
 $('ind').addEventListener('change', refreshBoard);
-['v20', 'exx', 'newOnly', 'watchOnly'].forEach(id => $(id).addEventListener('change', () => { saveOpts(); refreshBoard(); }));
+['v20', 'exx', 'newOnly', 'watchOnly', 'wkF'].forEach(id => $(id).addEventListener('change', () => { saveOpts(); refreshBoard(); }));
 const applyWatchInput = () => { SC.watch.setAll(SC.parseIds($('watchInput').value)); syncWatchUI(); refreshBoard(); };
 $('watchInput').addEventListener('keydown', e => { if (e.key === 'Enter') applyWatchInput(); });
 $('watchInput').addEventListener('change', applyWatchInput);

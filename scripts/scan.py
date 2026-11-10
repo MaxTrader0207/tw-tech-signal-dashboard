@@ -21,7 +21,7 @@ import requests
 import yfinance as yf
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from indicators import MA_N, MIN_BARS, analyze, signal_series, x_group  # noqa: E402
+from indicators import MA_N, MIN_BARS, analyze, last_week_state, signal_series, weekly_series, x_group  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "docs" / "data"
@@ -347,8 +347,8 @@ class Backtest:
     """
 
     def __init__(self):
-        self.ev = {}                              # key -> [(v20, {h: ret})]
-        self.base = []                            # [(v20, {h: ret})]
+        self.ev = {}                              # key -> [(v20, {h: ret}, 上週週線站上, 上週週線跌破)]
+        self.base = []                            # [(v20, {h: ret}, 上週週線站上, 上週週線跌破)]
         self.d0, self.d1 = None, None
 
     def add(self, rows, flags):
@@ -360,6 +360,7 @@ class Backtest:
         for v in vol:
             csum.append(csum[-1] + v)
         L = len(rows)
+        wk_of_row, weeks = weekly_series(rows)
         for i in range(MIN_BARS, L - min(HORIZONS)):
             fi, fp = flags[i], flags[i - 1]
             if fi is None or fp is None:
@@ -367,7 +368,8 @@ class Backtest:
             lo = max(0, i - VOL_AVG_N + 1)
             v20 = (csum[i + 1] - csum[lo]) / (i + 1 - lo) / 1000
             rets = {h: px[i + h] / px[i] - 1 for h in HORIZONS if i + h < L}
-            rec = (v20, rets)
+            ws = last_week_state(wk_of_row, weeks, i)
+            rec = (v20, rets, bool(ws and ws[0] > ws[1]), bool(ws and ws[0] < ws[1]))
             self.base.append(rec)
             events = list(fi - fp)
             for side in ("Bull", "Bear"):
@@ -382,7 +384,10 @@ class Backtest:
                 self.d1 = d if self.d1 is None or d > self.d1 else self.d1
 
     @staticmethod
-    def _stats(recs, t, h, bull=None):
+    def _stats(recs, t, h, bull=None, weekly=False):
+        # weekly=True：多方只取上週週線站上週 MA10 的事件，空方只取跌破的事件
+        if weekly:
+            recs = [r for r in recs if (r[2] if bull else r[3])]
         xs = sorted(r[1][h] for r in recs if r[0] >= t and h in r[1])
         n = len(xs)
         if not n:
@@ -401,6 +406,8 @@ class Backtest:
             "base": {str(t): {str(h): self._stats(self.base, t, h) for h in HORIZONS} for t in V_THRESH},
             "by": {str(t): {k: {str(h): self._stats(recs, t, h, "Bull" in k) for h in HORIZONS}
                             for k, recs in self.ev.items()} for t in V_THRESH},
+            "byW": {str(t): {k: {str(h): self._stats(recs, t, h, "Bull" in k, weekly=True) for h in HORIZONS}
+                             for k, recs in self.ev.items()} for t in V_THRESH},
         }
 
 
@@ -423,6 +430,10 @@ def build_payload(stocks, prices, now):
         item["v20"] = round(sum(vols) / len(vols) / 1000) if vols else 0      # 20 日均量（張）
         srows, flags = signal_series(rows)
         bt.add(srows, flags)
+        wk_of_row, weeks = weekly_series(srows)
+        ws = last_week_state(wk_of_row, weeks, len(srows) - 1)
+        if ws:                                  # 上週週收盤 vs 上週週 MA10
+            item["wk"] = {"d": ws[2], "c": r(ws[0], 4), "ma": r(ws[1], 4), "up": ws[0] > ws[1], "dn": ws[0] < ws[1]}
         if a["sig"]:
             item["st"] = streaks(flags, list(a["sig"]))
         ex = ex_dividend(rows)
@@ -444,7 +455,7 @@ def build_payload(stocks, prices, now):
     fresh.sort(key=lambda x: x["id"])
     return {
         "date": max_date,
-        "ver": 3,                       # 2：含 v20／st／ex／exHit；3：再加回測 bt
+        "ver": 4,                       # 2：v20／st／ex／exHit；3：回測 bt；4：上週週線 wk 與回測 byW
         "generated_at": now.isoformat(timespec="seconds"),
         "source": "Yahoo Finance 日線與配息（yfinance）；股票清單：臺灣證券交易所 ISIN 公告／OpenAPI",
         "stats": {

@@ -102,7 +102,9 @@ SC.hitCnt = (s, B) => { const f = SC.fam(s, B); return f.ma.length + (f.rsi ? 1 
 SC.macdTxt = (s, B) => SC.fam(s, B).macd.map(t => t === 'Cross' ? (B === 'Bull' ? '翻正' : '翻負') : (B === 'Bull' ? '連增' : '連減')).join('＋') || '—';
 
 /* ---------- 篩選 ----------
- * o = {mkt, ind, v20, exx, nw, watchOnly}
+ * o = {mkt, ind, v20, exx, nw, watchOnly, wk, wkStrict}
+ *   wk：週線濾網——多方訊號需上週週收盤站上上週週 MA10，空方訊號需跌破
+ *   wkStrict：資料有週線欄位（ver ≥ 4）時，缺週線資料的個股不保留訊號
  * 回傳的個股物件 sig 已依「排除除息影響／只看新增」過濾（原物件不變）。 */
 SC.filter = (stocks, o) => {
   const out = [];
@@ -112,11 +114,13 @@ SC.filter = (stocks, o) => {
     if (o.v20 && s.v20 != null && s.v20 < o.v20) continue;
     if (o.watchOnly && !SC.watch.has(s.id)) continue;
     let sig = s.sig;
-    if ((o.exx && s.exHit) || (o.nw && s.st)) {
+    const wkOn = o.wk && (s.wk || o.wkStrict);
+    if ((o.exx && s.exHit) || (o.nw && s.st) || wkOn) {
       sig = {};
       for (const k in s.sig) {
         if (o.exx && s.exHit && s.exHit.includes(k)) continue;
         if (o.nw && s.st && s.st[k] !== 1) continue;
+        if (wkOn && !SC.wkPass(s, /Bull/.test(k) ? 'Bull' : 'Bear')) continue;
         sig[k] = s.sig[k];
       }
     }
@@ -124,6 +128,12 @@ SC.filter = (stocks, o) => {
   }
   return out;
 };
+
+/* ---------- 週線 ---------- */
+SC.wkPass = (s, B) => !!(s.wk && (B === 'Bull' ? s.wk.up : s.wk.dn));
+SC.wkSfx = key => /Bull/.test(key) ? '＋上週週線站上週MA10' : '＋上週週線跌破週MA10';
+SC.wkTxt = s => s.wk ? `${SC.f2(s.wk.c)} / ${SC.f2(s.wk.ma)}` : '—';
+SC.wkCell = s => s.wk ? `<span class="${s.wk.up ? 'up' : s.wk.dn ? 'dn' : ''}">${SC.f2(s.wk.c)}</span><small> / ${SC.f2(s.wk.ma)}</small>` : '—';
 
 /* 自選股置頂（穩定排序，保留原順序） */
 SC.watchFirst = arr => {
@@ -191,11 +201,12 @@ SC.sigTag = (s, k) =>
 
 /* ---------- 歷史回測 ----------
  * 勝率：多方訊號＝持有期間上漲機率；空方訊號＝下跌機率。基準＝同期所有個股每日持有報酬。 */
-SC.bt = (cur, key, v20) => {
+SC.bt = (cur, key, v20, wk) => {
   const bt = cur && cur.bt;
   if (!bt || !bt.by) return null;
   const t = String(SC.V20_OPTIONS.includes(+v20) ? +v20 : 0);
-  const d = (bt.by[t] || {})[key];
+  const src = wk && bt.byW ? bt.byW : bt.by;
+  const d = (src[t] || {})[key];
   const base = bt.base[t] || {};
   const bull = /Bull/.test(key);
   const rows = bt.h.map(h => {
@@ -207,10 +218,10 @@ SC.bt = (cur, key, v20) => {
     return {h, n: v[0], avg: v[1], med, ret: med != null ? med : v[1], retLabel: med != null ? '中位報酬' : '均報',
             win: v[2], baseWin, baseRet: b[4] != null ? b[4] : b[1]};
   });
-  return {rows, n: rows[0].n, bull, from: bt.from, to: bt.to};
+  return {rows, n: rows[0].n, bull, from: bt.from, to: bt.to, wk: !!(wk && bt.byW)};
 };
 SC.btHtml = (cur, key, v20, opts = {}) => {
-  const r = SC.bt(cur, key, v20);
+  const r = SC.bt(cur, key, v20, opts.wk);
   if (!r) return '';
   if (!r.n) return `<div class="bt"><span class="bt-h">📊 歷史回測</span><span class="bt-na">期間內無此訊號</span></div>`;
   const few = r.n < SC.BT_MIN_N;
@@ -225,7 +236,7 @@ SC.btHtml = (cur, key, v20, opts = {}) => {
       ` ${x.retLabel} <b class="${rc}">${x.ret > 0 ? '+' : ''}${x.ret.toFixed(2)}%</b></span>`;
   }).join('');
   return `<div class="bt" title="近 ${r.from || ''}～${r.to || ''} 期間，訊號首日出現後持有 N 日的表現（還原權息價）。多方看上漲機率、空方看下跌機率；基準為同期所有個股。">` +
-    `<span class="bt-h">📊 歷史回測 <small>n=${SC.int(r.n)}${few ? '・樣本不足' : ''}</small></span>${items}</div>`;
+    `<span class="bt-h">📊 歷史回測${r.wk ? '（含週線條件）' : ''} <small>n=${SC.int(r.n)}${few ? '・樣本不足' : ''}</small></span>${items}</div>`;
 };
 SC.btPeriod = cur => cur && cur.bt && cur.bt.from ? `${cur.bt.from}～${cur.bt.to}` : '';
 
@@ -239,11 +250,12 @@ SC.whyMissing = (cur, K, filtered) => {
 };
 
 /* ---------- 輸出 ---------- */
-SC.CSV_BASE_HEAD = ['資料日期', '多空', '條件', '代號', '名稱', '市場', '產業', '收盤', '漲跌幅(%)', '20日均量(張)', '在榜天數', '除息日', '除息影響', '自選股'];
+SC.CSV_BASE_HEAD = ['資料日期', '多空', '條件', '代號', '名稱', '市場', '產業', '收盤', '漲跌幅(%)', '20日均量(張)', '在榜天數', '除息日', '除息影響', '自選股', '上週週收盤', '上週週MA10'];
 SC.csvBase = (cur, side, title, s, key) => [
   cur.date, side, title, s.id, s.name, SC.MKT[s.mkt] || '', s.ind || '', SC.f2(s.close),
   s.chg == null ? '' : s.chg.toFixed(2), s.v20 ?? '', SC.streakOf(s, key) ?? '',
-  s.ex ? s.ex.d : '', SC.exHitOf(s, key) ? '是' : '', SC.watch.has(s.id) ? '是' : ''];
+  s.ex ? s.ex.d : '', SC.exHitOf(s, key) ? '是' : '', SC.watch.has(s.id) ? '是' : '',
+  s.wk ? SC.f2(s.wk.c) : '', s.wk ? SC.f2(s.wk.ma) : ''];
 SC.csvName = (cur, side, key) => `技術訊號_${cur.date}_${side}_${SC.FILE_LABEL[key] || key}.csv`;
 SC.saveCsv = (name, rows, share) => {
   const csv = '﻿' + rows.map(r => r.map(SC.csvCell).join(',')).join('\r\n');

@@ -123,6 +123,45 @@ def signal_series(rows):
     return rows, out
 
 
+WEEK_MA = 10
+
+
+def weekly_series(rows):
+    """依日線組成週線（週一至週日為一週，週收盤＝該週最後一個交易日收盤）。
+
+    回傳 (wk_of_row, weeks)：
+      wk_of_row[i] ＝ 第 i 個交易日所屬週在 weeks 中的索引
+      weeks[k]     ＝ {"d": 該週最後交易日, "c": 週收盤, "ma": 週 MA10（不足 10 週為 None）}
+    """
+    import datetime as _dt
+    weeks, wk_of_row, keys = [], [], []
+    for r in rows:
+        y, w, _ = _dt.date.fromisoformat(r["date"]).isocalendar()
+        k = (y, w)
+        if keys and keys[-1] == k:
+            weeks[-1]["d"], weeks[-1]["c"] = r["date"], float(r["close"])
+        else:
+            keys.append(k)
+            weeks.append({"d": r["date"], "c": float(r["close"]), "ma": None})
+        wk_of_row.append(len(weeks) - 1)
+    s = 0.0
+    for k, w in enumerate(weeks):
+        s += w["c"]
+        if k >= WEEK_MA:
+            s -= weeks[k - WEEK_MA]["c"]
+        if k >= WEEK_MA - 1:
+            w["ma"] = s / WEEK_MA
+    return wk_of_row, weeks
+
+
+def last_week_state(wk_of_row, weeks, i):
+    """第 i 個交易日的「上週」週線狀態：(上週收盤, 上週週MA10, 上週最後交易日)；資料不足回傳 None。"""
+    k = wk_of_row[i] - 1
+    if k < 0 or weeks[k]["ma"] is None:
+        return None
+    return weeks[k]["c"], weeks[k]["ma"], weeks[k]["d"]
+
+
 def x_group(sigs, side):
     """交集分組：'3' 三指標共振、'MD' 均線+MACD、'MR' 均線+RSI、'RD' RSI+MACD，未達兩類回傳 None。"""
     m = any(f"ma{side}{n}" in sigs for n in MA_N)

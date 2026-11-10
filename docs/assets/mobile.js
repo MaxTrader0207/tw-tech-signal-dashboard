@@ -8,31 +8,35 @@ let boot = null, cur = null, results = [], lists = {}, xi = {};
 let tab = 'x', side = 'Bull';
 const open = new Set(), shown = {};
 let BLK = {};
-const opt = {exx: false, nw: false, watchOnly: false};
+const opt = {exx: false, nw: false, watchOnly: false, wk: true};
 
 /* ---------- 偏好 ---------- */
 $('v20').value = SC.prefs.get('v20', '100');
 opt.exx = SC.prefs.get('exx', '') === '1';
 opt.nw = SC.prefs.get('new', '') === '1';
 opt.watchOnly = SC.prefs.get('watchOnly', '') === '1';
+opt.wk = SC.prefs.get('wk', '1') === '1';
 const saveOpts = () => {
   SC.prefs.set('v20', $('v20').value);
-  SC.prefs.set('exx', opt.exx ? '1' : ''); SC.prefs.set('new', opt.nw ? '1' : ''); SC.prefs.set('watchOnly', opt.watchOnly ? '1' : '');
+  SC.prefs.set('exx', opt.exx ? '1' : ''); SC.prefs.set('new', opt.nw ? '1' : ''); SC.prefs.set('watchOnly', opt.watchOnly ? '1' : ''); SC.prefs.set('wk', opt.wk ? '1' : '0');
 };
 const syncTg = () => {
   $('exx').classList.toggle('on', opt.exx);
   $('newOnly').classList.toggle('on', opt.nw);
   $('watchOnly').classList.toggle('on', opt.watchOnly);
+  $('wkF').classList.toggle('on', opt.wk);
   $('watchOnly').textContent = `⭐ 只看自選${SC.watch.size ? `（${SC.watch.size}）` : ''}`;
 };
 syncTg();
 
 /* ---------- 計算 ---------- */
 function compute() {
-  results = SC.filter(cur.stocks, {mkt: $('mkt').value, ind: $('ind').value, v20: +$('v20').value, exx: opt.exx, nw: opt.nw, watchOnly: opt.watchOnly});
+  results = SC.filter(cur.stocks, {mkt: $('mkt').value, ind: $('ind').value, v20: +$('v20').value, exx: opt.exx, nw: opt.nw,
+    watchOnly: opt.watchOnly, wk: opt.wk, wkStrict: (cur.ver || 1) >= 4});
   ({lists, xi} = SC.build(results));
 }
 
+const wkOn = () => opt.wk && !!cur && (cur.ver || 1) >= 4;
 function blocksFor(t, B) {
   const bull = B === 'Bull';
   if (t === 'x') return SC.X_GROUPS.map(g => ({key: `x${B}${g.g}`, cls: g.cls, badge: g.badge, title: g.g === '3' ? g.title : '兩項命中', list: xi[B][g.f], kind: 'x'}));
@@ -66,7 +70,7 @@ const row = (s, mhtml, key = '') => `<div class="row${SC.watch.has(s.id) ? ' w' 
   <div class="r2">${mhtml}</div></div>`;
 
 function blockBody(b) {
-  const bt = SC.btHtml(cur, b.key, +$('v20').value, {short: true});
+  const bt = SC.btHtml(cur, b.key, +$('v20').value, {short: true, wk: wkOn()});
   if (!b.list.length) return bt + '<div class="none">目前無符合條件個股</div>';
   const n = shown[b.key] || PAGE;
   const rows = b.list.slice(0, n).map(s => row(s, metrics(b, s, side), b.key)).join('');
@@ -108,7 +112,7 @@ function renderMain() {
        <button class="bear ${side === 'Bear' ? 'on' : ''}" data-side="Bear">▼ 空方<span class="c">${sideCount(tab, 'Bear')}</span></button>
      </div>` +
     bs.map(b => `<section class="blk ${b.cls} ${open.has(b.key) ? 'open' : ''} ${b.list.length ? '' : 'empty'}" data-k="${b.key}">
-      <div class="bh" data-toggle="${b.key}"><span class="badge">${b.badge}</span><span class="sp"></span><span class="n">${b.list.length}</span><span class="chev">▶</span><span class="ti">${b.title}</span></div>
+      <div class="bh" data-toggle="${b.key}"><span class="badge">${b.badge}</span><span class="sp"></span><span class="n">${b.list.length}</span><span class="chev">▶</span><span class="ti">${b.title}${wkOn() ? `<span class="wkt">${SC.wkSfx(b.key)}</span>` : ''}</span></div>
       <div class="bb">${open.has(b.key) ? blockBody(b) : ''}</div></section>`).join('');
   setSegTop();
 }
@@ -173,6 +177,8 @@ function openSheet(id) {
     ${s.ex ? `<div class="exnote">💰 ${md(s.ex.d)} 除息${s.ex.div ? ` ${s.ex.div} 元` : ''}${s.exHit ? '。以還原權息價計算時，標示 ⚠ 的訊號不成立，可能是除息跳空造成。' : '，目前訊號不受除息影響。'}</div>` : ''}
     <div class="sec">命中訊號（多方 ${xb}／空方 ${xr}）</div><div class="tags" style="margin-bottom:14px">${tags}</div>
     <div class="grid" style="margin-bottom:14px">${cell('20 日均量', s.v20 == null ? '—' : SC.int(s.v20) + ' 張')}${cell('今日成交量', s.vol == null ? '—' : SC.int(s.vol / 1000) + ' 張')}</div>
+    <div class="sec">上週週線${s.wk ? `（${md(s.wk.d)} 當週）` : ''}</div>
+    <div class="grid" style="margin-bottom:14px">${cell('週收盤', s.wk ? f2(s.wk.c) : '—', s.wk ? (s.wk.up ? 'up' : s.wk.dn ? 'dn' : '') : '')}${cell('週 MA10', s.wk ? f2(s.wk.ma) : '—')}${cell('狀態', s.wk ? (s.wk.up ? '站上' : s.wk.dn ? '跌破' : '持平') : '—', s.wk ? (s.wk.up ? 'up' : s.wk.dn ? 'dn' : '') : '')}</div>
     <div class="sec">均線</div>
     <div class="grid">${MA_N.map(n => cell('MA' + n, f2(s.ma[n]), s.close > s.ma[n] ? 'up' : 'dn')).join('')}</div>
     <div class="sec">RSI ／ MACD</div>
@@ -213,7 +219,7 @@ function exportCsv(b) {
     : b.kind === 'macd' ? [f2(s.osc[0]), f2(s.osc[1]), f2(s.osc[2]), f2(s.dif), f2(s.macd)]
     : [SC.fam(s, B).ma.join(' '), f2(s.rsi), SC.macdTxt(s, B), SC.hitCnt(s, B)];
   const head = [...SC.CSV_BASE_HEAD, ...extraH];
-  const rows = b.list.map(s => [...SC.csvBase(cur, sideTxt, `${b.badge}｜${b.title}`, s, b.key), ...extra(s)]);
+  const rows = b.list.map(s => [...SC.csvBase(cur, sideTxt, `${b.badge}｜${b.title}${wkOn() ? SC.wkSfx(b.key) : ''}`, s, b.key), ...extra(s)]);
   SC.saveCsv(SC.csvName(cur, sideTxt, b.key), [head, ...rows], true);
 }
 
@@ -250,7 +256,7 @@ function refilter(keepOpen) {
 $('mkt').addEventListener('change', () => refilter());
 $('ind').addEventListener('change', () => refilter());
 $('v20').addEventListener('change', () => { saveOpts(); refilter(); });
-for (const [id, k] of [['exx', 'exx'], ['newOnly', 'nw'], ['watchOnly', 'watchOnly']]) {
+for (const [id, k] of [['wkF', 'wk'], ['exx', 'exx'], ['newOnly', 'nw'], ['watchOnly', 'watchOnly']]) {
   $(id).addEventListener('click', () => { opt[k] = !opt[k]; syncTg(); saveOpts(); refilter(); });
 }
 $('date').addEventListener('change', e => show(e.target.value));
@@ -270,7 +276,8 @@ async function show(date) {
     const ver = cur.ver || 1;
     const gt = cur.generated_at ? new Date(cur.generated_at).toLocaleString('zh-TW', {hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : '—';
     $('meta').textContent = `資料日期 ${cur.date}｜有效 ${st.scanned ?? cur.stocks.length} 檔｜更新 ${gt}` +
-      (ver < 2 ? '｜⚠ 舊格式資料，均量／除息／新增標記不適用' : ver < 3 ? '｜此日期尚無歷史回測' : '');
+      (ver < 2 ? '｜⚠ 舊格式資料，均量／除息／新增標記不適用' : ver < 3 ? '｜此日期尚無歷史回測' : '') +
+      (ver < 4 ? '｜⚠ 尚無週線資訊，週線濾網不適用' : '');
     fillIndustries(); refilter();
   } catch (e) { $('err').textContent = `無法載入 ${date} 的資料：${e.message}`; }
 }
