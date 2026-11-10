@@ -30,6 +30,9 @@ BATCH = 80                         # yfinance 每批檔數
 MIN_FRESH = 500                    # 有效檔數低於此值視為抓取異常，不覆蓋資料
 TPE = dt.timezone(dt.timedelta(hours=8))
 INTRADAY_CUTOFF = dt.time(14, 30)  # 台北時間 14:30 前不採用當日 K 棒
+EX_WINDOW = 5                      # 近 N 個交易日內有除息者標示
+STREAK_MAX = 10                    # 在榜天數最多回推 N 日（≥N 顯示 N+）
+VOL_AVG_N = 20                     # 均量天數
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
 MKT_NAME = {"TWSE": "上市", "TPEx": "上櫃"}
@@ -123,8 +126,10 @@ def frame_to_rows(df):
         if c is None or h is None or l is None:
             continue
         d = pd.Timestamp(idx).strftime("%Y-%m-%d")
+        adj, div = _num(r.get("Adj Close")), _num(r.get("Dividends"))
         rows[d] = {"date": d, "close": round(c, 4), "high": round(h, 4), "low": round(l, 4),
-                   "volume": int(_num(r.get("Volume")) or 0)}
+                   "volume": int(_num(r.get("Volume")) or 0),
+                   "adj": None if adj is None else round(adj, 6), "div": div or 0.0}
     return [rows[k] for k in sorted(rows)]
 
 
@@ -136,7 +141,7 @@ def fetch_yfinance(symbols):
         for attempt in range(3):
             try:
                 df = yf.download(chunk, period="1y", interval="1d", auto_adjust=False,
-                                 actions=False, group_by="ticker", threads=True,
+                                 actions=True, group_by="ticker", threads=True,
                                  progress=False, timeout=30)
                 break
             except Exception as e:  # noqa: BLE001
@@ -161,7 +166,7 @@ def fetch_chart(sess, sym):
     for host in ("query1", "query2"):
         try:
             r = sess.get(f"https://{host}.finance.yahoo.com/v8/finance/chart/{sym}",
-                         params={"range": "1y", "interval": "1d"}, timeout=20)
+                         params={"range": "1y", "interval": "1d", "events": "div,splits"}, timeout=20)
         except requests.RequestException:
             continue
         if r.status_code == 404:
@@ -175,14 +180,20 @@ def fetch_chart(sess, sym):
         if not res or not res.get("timestamp"):
             return None
         q = res["indicators"]["quote"][0]
+        adjc = ((res["indicators"].get("adjclose") or [{}])[0]).get("adjclose") or []
+        divs = {}
+        for ev in ((res.get("events") or {}).get("dividends") or {}).values():
+            divs[dt.datetime.fromtimestamp(ev["date"], TPE).strftime("%Y-%m-%d")] = ev.get("amount") or 0.0
         rows = {}
         for i, ts in enumerate(res["timestamp"]):
             c, h, l = q["close"][i], q["high"][i], q["low"][i]
             if c is None or h is None or l is None:
                 continue
             d = dt.datetime.fromtimestamp(ts, TPE).strftime("%Y-%m-%d")
+            adj = adjc[i] if i < len(adjc) else None
             rows[d] = {"date": d, "close": round(c, 4), "high": round(h, 4), "low": round(l, 4),
-                       "volume": int(q["volume"][i] or 0)}
+                       "volume": int(q["volume"][i] or 0),
+                       "adj": None if adj is None else round(adj, 6), "div": divs.get(d, 0.0)}
         return [rows[k] for k in sorted(rows)]
     return None
 
@@ -227,6 +238,53 @@ def compact(a):
     }
 
 
+def ex_dividend(rows):
+    """近 EX_WINDOW 個交易日內的除息事件：Yahoo 配息紀錄，或還原因子跳動（Adj/Close 比值變化）。"""
+    ev = {}
+    for i in range(1, len(rows)):
+        cur_, prev = rows[i], rows[i - 1]
+        if cur_.get("div"):
+            ev[cur_["date"]] = cur_["div"]
+        if cur_.get("adj") and prev.get("adj") and cur_["close"] and prev["close"]:
+            f_prev, f_cur = prev["adj"] / prev["close"], cur_["adj"] / cur_["close"]
+            if f_cur > 0 and f_prev / f_cur < 0.9995:
+                ev.setdefault(cur_["date"], 0.0)
+    recent = {r_["date"] for r_ in rows[-EX_WINDOW:]}
+    hits = sorted(d for d in ev if d in recent)
+    if not hits:
+        return None
+    d = hits[-1]
+    return {"d": d, "div": round(ev[d], 4) if ev[d] else None}
+
+
+def adjusted_rows(rows):
+    """以 Yahoo 還原因子換算還原權息價（最後一日因子歸一）；缺還原價時回傳 None。"""
+    if any(not x.get("adj") for x in rows):
+        return None
+    base = rows[-1]["adj"] / rows[-1]["close"]
+    out = []
+    for x in rows:
+        f = (x["adj"] / x["close"]) / base
+        out.append({**x, "close": x["close"] * f, "high": x["high"] * f, "low": x["low"] * f})
+    return out
+
+
+def streaks(rows, keys):
+    """各訊號連續出現天數：逐日截斷資料重算，直到訊號消失（最多 STREAK_MAX 日）。"""
+    st = {k: 1 for k in keys}
+    alive = set(keys)
+    for back in range(1, STREAK_MAX):
+        pa = analyze(rows[:-back])
+        if not pa:
+            break
+        alive = {k for k in alive if k in pa["sig"]}
+        if not alive:
+            break
+        for k in alive:
+            st[k] += 1
+    return st
+
+
 def build_payload(stocks, prices, now):
     results, no_data, short = [], [], []
     for s in stocks:
@@ -234,12 +292,26 @@ def build_payload(stocks, prices, now):
         if not rows:
             no_data.append(s["id"])
             continue
-        a = analyze(drop_intraday(list(rows), now))
+        rows = drop_intraday(list(rows), now)
+        a = analyze(rows)
         if not a:
             short.append(s["id"])
             continue
         item = {"id": s["id"], "name": s["name"], "mkt": s["mkt"], "ind": s["ind"]}
         item.update(compact(a))
+        vols = [x["volume"] for x in rows[-VOL_AVG_N:]]
+        item["v20"] = round(sum(vols) / len(vols) / 1000) if vols else 0      # 20 日均量（張）
+        if a["sig"]:
+            item["st"] = streaks(rows, list(a["sig"]))
+        ex = ex_dividend(rows)
+        if ex:
+            item["ex"] = ex
+            adj = adjusted_rows(rows)
+            aa = analyze(adj) if adj else None
+            if aa is not None:
+                hit = [k for k in a["sig"] if k not in aa["sig"]]
+                if hit:
+                    item["exHit"] = hit        # 原始價有、還原價沒有 → 除息造成的訊號
         results.append(item)
 
     max_date = max((x["date"] for x in results), default="")
@@ -250,8 +322,9 @@ def build_payload(stocks, prices, now):
     fresh.sort(key=lambda x: x["id"])
     return {
         "date": max_date,
+        "ver": 2,                       # 2：含 v20／st／ex／exHit
         "generated_at": now.isoformat(timespec="seconds"),
-        "source": "Yahoo Finance 日線（yfinance）；股票清單：臺灣證券交易所 ISIN 公告／OpenAPI",
+        "source": "Yahoo Finance 日線與配息（yfinance）；股票清單：臺灣證券交易所 ISIN 公告／OpenAPI",
         "stats": {
             "universe": len(stocks), "fetched": len(prices), "scanned": len(fresh),
             "no_data": len(no_data), "insufficient": len(short), "stale": len(stale),

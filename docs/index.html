@@ -90,6 +90,8 @@ td.txt{text-align:left}
 section.xsec{border-color:#5a4a1c;box-shadow:0 0 0 1px rgba(245,184,61,.15) inset}
 section.xsec table{font-size:1rem}
 section.xsec th,section.xsec td{padding:7px 5px}
+section.xsec td:nth-child(2){white-space:normal;min-width:4.5em;line-height:1.35}
+section.xsec td:nth-child(2) .mk{margin:2px 4px 0 0}
 .side>h3 .h3n{font-family:"JetBrains Mono",monospace;font-size:1.05rem;margin-left:8px;opacity:.9}
 .mtag{display:inline-block;min-width:30px;text-align:center;border-radius:5px;padding:0 5px;margin-left:3px;font-size:.8rem;font-weight:700;color:#111}
 .mabox h4{margin:0 0 6px;font-size:1.1rem;display:flex;align-items:center;gap:10px}
@@ -104,6 +106,15 @@ section.xsec th,section.xsec td{padding:7px 5px}
 .tag.bull{background:var(--bull-bg);color:var(--bull);border:1px solid rgba(255,77,94,.4)}
 .tag.bear{background:var(--bear-bg);color:var(--bear);border:1px solid rgba(31,209,139,.4)}
 .tag.none{color:var(--muted);border:1px solid var(--line)}
+.chk{display:flex;align-items:center;gap:6px;font-size:1rem;font-weight:700;cursor:pointer;white-space:nowrap}
+.chk input{width:18px;height:18px;accent-color:var(--accent)}
+.mk{display:inline-block;margin-left:6px;border-radius:5px;padding:0 6px;font-size:.75rem;font-weight:800;vertical-align:1px;line-height:1.55}
+.mk.new{background:var(--accent);color:#111}
+.mk.run{border:1px solid var(--line);color:var(--muted)}
+.mk.ex{border:1px solid #6b7da6;color:#a9b7d6}
+.mk.ex.hit{background:#4a3410;border-color:var(--accent);color:#ffd58a}
+.legend{color:var(--muted);font-size:.88rem;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center}
+.legend .mk{margin-left:0}
 #queryBox{display:none}
 /* 區塊輸出按鈕 */
 .exp{display:inline-flex;gap:6px;margin-left:4px}
@@ -152,6 +163,25 @@ footer{margin-top:26px;border-top:2px solid var(--line);padding-top:16px}
       <label for="ind">產業</label>
       <select id="ind"><option value="">全部產業</option></select>
     </div>
+    <div class="field">
+      <label for="v20">20 日均量</label>
+      <select id="v20">
+        <option value="0">不限</option>
+        <option value="100" selected>≥ 100 張</option>
+        <option value="500">≥ 500 張</option>
+        <option value="1000">≥ 1,000 張</option>
+        <option value="5000">≥ 5,000 張</option>
+      </select>
+    </div>
+    <label class="chk"><input type="checkbox" id="exx"> 排除除息影響訊號</label>
+    <label class="chk"><input type="checkbox" id="newOnly"> 只看今日新增訊號</label>
+  </div>
+  <div class="legend">
+    <span>標記：</span>
+    <span><span class="mk new">新</span> 今日新出現</span>
+    <span><span class="mk run">連3</span> 已連續 3 個交易日</span>
+    <span><span class="mk ex">除息</span> 近 5 個交易日內除息</span>
+    <span><span class="mk ex hit">⚠除息</span> 以還原權息價計算時此訊號不成立，可能是除息跳空造成</span>
   </div>
   <div class="row">
     <label for="q">個股查詢</label>
@@ -182,6 +212,7 @@ footer{margin-top:26px;border-top:2px solid var(--line);padding-top:16px}
     計算說明：MA 為收盤價簡單移動平均；RSI(6) 採三竹 Wilder 平滑法；MACD 採三竹公式，需求指數 DI＝(最高＋最低＋2×收盤)÷4，DIF＝EMA12(DI)−EMA26(DI)，MACD＝EMA9(DIF)，柱狀體 OSC＝DIF−MACD。
     「黃金／死亡交叉」判定為前一日收盤 ≤／≥ 均線、當日收盤 ＞／＜ 均線，發生於最近 3 個交易日內；「上揚／下彎」為最新一日均線值高於／低於前一日。
     價格採 Yahoo 未還原除權息之收盤價（僅含股票分割調整）；台北時間 14:30 前不採用當日 K 棒。停牌、資料未達 110 個交易日或最新資料非當日之個股不列入。
+    「新／連 N」以同一套資料逐日回推訊號連續出現的交易日數；「除息」為近 5 個交易日內依 Yahoo 配息與還原因子偵測，「⚠除息」表示改用還原權息價計算時該訊號不成立。20 日均量以 Yahoo 成交量換算張數。
   </div>
   <div class="warn">
     <h3>⚠ 投資警語</h3>
@@ -227,10 +258,36 @@ const SIG_LABEL = {
 };
 
 /* ---------- 看板 ---------- */
-function table(list, cols) {
+/* ---------- 標記：新增／連 N、除息 ---------- */
+const STREAK_MAX = 10;
+const sideKeys = (s, key) => {
+  const m = /^x(Bull|Bear)/.exec(key);
+  return m ? SIG_KEYS.filter(k => k.includes(m[1]) && s.sig[k]) : [key];
+};
+const streakOf = (s, key) => {
+  if (!s.st) return null;
+  const v = sideKeys(s, key).map(k => s.st[k]).filter(Boolean);
+  return v.length ? Math.min(...v) : null;
+};
+const exHitOf = (s, key) => !!(s.exHit && sideKeys(s, key).some(k => s.exHit.includes(k)));
+const runTxt = n => n == null ? '' : n === 1 ? '新' : n >= STREAK_MAX ? `連${STREAK_MAX}+` : `連${n}`;
+function marks(s, key) {
+  let h = '';
+  const n = streakOf(s, key);
+  if (n === 1) h += '<span class="mk new" title="今日新出現的訊號">新</span>';
+  else if (n) h += `<span class="mk run" title="已連續 ${n} 個交易日">${runTxt(n)}</span>`;
+  if (s.ex) {
+    const hit = exHitOf(s, key);
+    const tip = `${md(s.ex.d)} 除息${s.ex.div ? ' ' + s.ex.div + ' 元' : ''}${hit ? '；以還原權息價計算時此訊號不成立' : ''}`;
+    h += `<span class="mk ex${hit ? ' hit' : ''}" title="${tip}">${hit ? '⚠' : ''}除息</span>`;
+  }
+  return h;
+}
+
+function table(list, cols, key) {
   if (!list.length) return '<div class="empty">目前無符合條件個股</div>';
   return `<div class="tbl"><table><thead><tr><th>代號</th><th>名稱</th><th>收盤</th><th>漲跌幅</th>${cols.map(c => `<th>${c.h}</th>`).join('')}</tr></thead><tbody>` +
-    list.map(s => `<tr><td class="id"><a href="#" data-q="${esc(s.id)}">${esc(s.id)}</a></td><td>${esc(s.name)}</td><td class="num">${f2(s.close)}</td><td class="num">${pct(s.chg)}</td>${cols.map(c => `<td class="num">${c.v(s)}</td>`).join('')}</tr>`).join('') +
+    list.map(s => `<tr><td class="id"><a href="#" data-q="${esc(s.id)}">${esc(s.id)}</a></td><td>${esc(s.name)}${marks(s, key)}</td><td class="num">${f2(s.close)}</td><td class="num">${pct(s.chg)}</td>${cols.map(c => `<td class="num">${c.v(s)}</td>`).join('')}</tr>`).join('') +
     '</tbody></table></div>';
 }
 /* ---------- 區塊輸出：CSV 下載／複製代號 ---------- */
@@ -255,10 +312,11 @@ const plain = h => String(h).replace(/<[^>]+>/g, '').trim();
 const csvCell = v => /[",\n]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : v;
 
 function exportCsv(b) {
-  const head = ['資料日期', '多空', '條件', '代號', '名稱', '市場', '產業', '收盤', '漲跌幅(%)', ...b.cols.map(c => plain(c.h))];
+  const head = ['資料日期', '多空', '條件', '代號', '名稱', '市場', '產業', '收盤', '漲跌幅(%)', '20日均量(張)', '在榜天數', '除息日', '除息影響', ...b.cols.map(c => plain(c.h))];
   const rows = b.list.map(s => [
     cur.date, b.side, b.title, s.id, s.name, MKT[s.mkt] || '', s.ind || '',
-    f2(s.close), s.chg == null ? '' : s.chg.toFixed(2), ...b.cols.map(c => plain(c.v(s)))
+    f2(s.close), s.chg == null ? '' : s.chg.toFixed(2), s.v20 ?? '', streakOf(s, b.key) ?? '',
+    s.ex ? s.ex.d : '', exHitOf(s, b.key) ? '是' : '', ...b.cols.map(c => plain(c.v(s)))
   ]);
   const csv = '﻿' + [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
   const name = `技術訊號_${cur.date}_${b.side}_${FILE_LABEL[b.key] || b.key}.csv`;
@@ -284,9 +342,9 @@ function flash(btn, msg) {
 }
 
 const cond = (title, list, cols, key) =>
-  `<div class="cond"><h4><span>${title}</span><span class="n">${list.length}</span>${expBtns(key, plain(title), list, cols)}</h4>${table(list, cols)}</div>`;
+  `<div class="cond"><h4><span>${title}</span><span class="n">${list.length}</span>${expBtns(key, plain(title), list, cols)}</h4>${table(list, cols, key)}</div>`;
 const box = (cls, badge, title, list, cols, key) =>
-  `<div class="mabox ${cls}"><h4><span class="badge">${badge}</span><span class="t">${title}</span><span class="n">${list.length}</span>${expBtns(key, `${badge}｜${plain(title)}`, list, cols)}</h4>${table(list, cols)}</div>`;
+  `<div class="mabox ${cls}"><h4><span class="badge">${badge}</span><span class="t">${title}</span><span class="n">${list.length}</span>${expBtns(key, `${badge}｜${plain(title)}`, list, cols)}</h4>${table(list, cols, key)}</div>`;
 const maBox = (n, title, list, cols, key) => box(`ma${n}`, `MA${n}`, title, list, cols, key);
 
 function render(results) {
@@ -411,9 +469,36 @@ function render(results) {
 
 /* ---------- 篩選 ---------- */
 function filtered() {
-  const mkt = $('mkt').value, ind = $('ind').value;
-  return cur.stocks.filter(s => (!mkt || s.mkt === mkt) && (!ind || s.ind === ind));
+  const mkt = $('mkt').value, ind = $('ind').value, v20 = +$('v20').value;
+  const exx = $('exx').checked, nw = $('newOnly').checked;
+  const out = [];
+  for (const s of cur.stocks) {
+    if (mkt && s.mkt !== mkt) continue;
+    if (ind && s.ind !== ind) continue;
+    if (v20 && s.v20 != null && s.v20 < v20) continue;
+    let sig = s.sig;
+    if ((exx && s.exHit) || (nw && s.st)) {
+      sig = {};
+      for (const k in s.sig) {
+        if (exx && s.exHit && s.exHit.includes(k)) continue;
+        if (nw && s.st && s.st[k] !== 1) continue;
+        sig[k] = s.sig[k];
+      }
+    }
+    out.push(sig === s.sig ? s : {...s, sig});
+  }
+  return out;
 }
+const saveOpts = () => { try {
+  localStorage.setItem('sig_v20', $('v20').value);
+  localStorage.setItem('sig_exx', $('exx').checked ? '1' : '');
+  localStorage.setItem('sig_new', $('newOnly').checked ? '1' : '');
+} catch (e) {} };
+try {
+  const v = localStorage.getItem('sig_v20'); if (v != null) $('v20').value = v;
+  $('exx').checked = localStorage.getItem('sig_exx') === '1';
+  $('newOnly').checked = localStorage.getItem('sig_new') === '1';
+} catch (e) {}
 
 function fillIndustries() {
   const keep = $('ind').value;
@@ -449,15 +534,16 @@ function query() {
   const tags = s => {
     const ks = SIG_KEYS.filter(k => s.sig[k]);
     if (!ks.length) return '<span class="tag none">無訊號</span>';
-    return ks.map(k => `<span class="tag ${/Bull/.test(k) ? 'bull' : 'bear'}">${/Bull/.test(k) ? '▲' : '▼'} ${SIG_LABEL[k]}</span>`).join('');
+    return ks.map(k => `<span class="tag ${/Bull/.test(k) ? 'bull' : 'bear'}">${/Bull/.test(k) ? '▲' : '▼'} ${SIG_LABEL[k]}` +
+      `${s.st && s.st[k] ? '・' + runTxt(s.st[k]) : ''}${s.exHit && s.exHit.includes(k) ? '・⚠除息影響' : ''}</span>`).join('');
   };
   $('qResult').innerHTML = `<div class="tbl"><table><thead><tr>
-      <th>代號</th><th>名稱</th><th>市場</th><th>產業</th><th>收盤</th><th>漲跌幅</th>
+      <th>代號</th><th>名稱</th><th>市場</th><th>產業</th><th>收盤</th><th>漲跌幅</th><th>20日均量</th>
       <th>MA30</th><th>MA60</th><th>MA100</th><th>RSI(6)</th><th>DIF</th><th>MACD</th><th>OSC</th><th style="text-align:left">命中訊號</th>
     </tr></thead><tbody>` +
     hits.map(s => `<tr>
-      <td class="id">${esc(s.id)}</td><td>${esc(s.name)}</td><td class="txt">${MKT[s.mkt] || ''}</td><td class="txt">${esc(s.ind) || '—'}</td>
-      <td class="num">${f2(s.close)}</td><td class="num">${pct(s.chg)}</td>
+      <td class="id">${esc(s.id)}</td><td>${esc(s.name)}${s.ex ? marks(s, '') : ''}</td><td class="txt">${MKT[s.mkt] || ''}</td><td class="txt">${esc(s.ind) || '—'}</td>
+      <td class="num">${f2(s.close)}</td><td class="num">${pct(s.chg)}</td><td class="num">${s.v20 == null ? '—' : s.v20.toLocaleString() + ' 張'}</td>
       <td class="num">${f2(s.ma[30])}</td><td class="num">${f2(s.ma[60])}</td><td class="num">${f2(s.ma[100])}</td>
       <td class="num">${f2(s.rsi)}</td><td class="num">${f2(s.dif)}</td><td class="num">${f2(s.macd)}</td>
       <td class="num"><b class="${s.osc[2] > 0 ? 'up' : 'dn'}">${f2(s.osc[2])}</b></td>
@@ -473,7 +559,8 @@ async function show(date) {
     cur = cache[date];
     const st = cur.stats || {};
     $('meta').textContent = `資料日期 ${cur.date}｜清單 ${st.universe ?? '—'} 檔，有效 ${st.scanned ?? cur.stocks.length} 檔` +
-      `（未取得 ${st.no_data ?? 0}、資料不足 ${st.insufficient ?? 0}、非當日 ${st.stale ?? 0}）｜點選表格代號可查看個股明細`;
+      `（未取得 ${st.no_data ?? 0}、資料不足 ${st.insufficient ?? 0}、非當日 ${st.stale ?? 0}）｜點選表格代號可查看個股明細` +
+      ((cur.ver || 1) < 2 ? '｜⚠ 此日期為舊格式資料，均量篩選、除息與新增標記不適用' : '');
     $('dataDate').textContent = cur.date;
     $('genTime').textContent = cur.generated_at ? new Date(cur.generated_at).toLocaleString('zh-TW', {hour12: false}) : '—';
     fillIndustries();
@@ -507,6 +594,7 @@ async function init() {
 $('date').addEventListener('change', e => show(e.target.value));
 $('mkt').addEventListener('change', refreshBoard);
 $('ind').addEventListener('change', refreshBoard);
+['v20', 'exx', 'newOnly'].forEach(id => $(id).addEventListener('change', () => { saveOpts(); refreshBoard(); }));
 $('qBtn').addEventListener('click', query);
 $('q').addEventListener('keydown', e => { if (e.key === 'Enter') query(); });
 $('qClr').addEventListener('click', () => { $('q').value = ''; query(); });

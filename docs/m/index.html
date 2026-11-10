@@ -135,6 +135,15 @@ main{padding:10px 12px}
 .tag.bull{background:var(--bull-bg);color:var(--bull);border:1px solid rgba(255,77,94,.4)}
 .tag.bear{background:var(--bear-bg);color:var(--bear);border:1px solid rgba(31,209,139,.4)}
 .tag.na{color:var(--muted);border:1px solid var(--line)}
+.t2 .f.tg{padding:7px 12px;font-size:14px;font-weight:700;color:var(--muted)}
+.t2 .f.tg.on{background:rgba(245,184,61,.16);border-color:var(--accent);color:var(--accent)}
+.mk{display:inline-block;border-radius:4px;padding:0 5px;font-size:.7rem;font-weight:800;line-height:1.6;white-space:nowrap;align-self:center}
+.mk.new{background:var(--accent);color:#111}
+.mk.run{border:1px solid var(--line);color:var(--muted)}
+.mk.ex{border:1px solid #6b7da6;color:#a9b7d6}
+.mk.ex.hit{background:#4a3410;border-color:var(--accent);color:#ffd58a}
+.legend{color:var(--muted);font-size:.72rem;padding:4px 12px 0;display:flex;flex-wrap:wrap;gap:3px 10px;align-items:center}
+.exnote{background:#1c1410;border:1px solid #5a3c14;color:#f3d9a8;border-radius:10px;padding:8px 10px;font-size:.82rem;margin-bottom:12px}
 
 footer{color:var(--muted);font-size:.72rem;padding:14px 14px 0;line-height:1.6}
 footer .warn{background:#1c1410;border:1px solid #5a3c14;border-radius:10px;padding:10px 12px;color:#f3d9a8;margin-top:8px}
@@ -151,6 +160,9 @@ footer .warn{background:#1c1410;border:1px solid #5a3c14;border-radius:10px;padd
     <label class="f date"><span class="lb">📅 日期</span><select id="date"><option>載入中…</option></select></label>
     <label class="f"><span class="lb">市場</span><select id="mkt"><option value="">全部</option><option value="TWSE">上市</option><option value="TPEx">上櫃</option></select></label>
     <label class="f"><span class="lb">產業</span><select id="ind"><option value="">全部</option></select></label>
+    <label class="f"><span class="lb">均量</span><select id="v20"><option value="0">不限</option><option value="100" selected>≥100張</option><option value="500">≥500張</option><option value="1000">≥1000張</option><option value="5000">≥5000張</option></select></label>
+    <button class="f tg" id="exx" type="button">排除除息影響</button>
+    <button class="f tg" id="newOnly" type="button">只看今日新增</button>
   </div>
   <nav class="tabs" id="tabs">
     <button class="tab on" data-tab="x">🎯 交集</button>
@@ -163,12 +175,13 @@ footer .warn{background:#1c1410;border:1px solid #5a3c14;border-radius:10px;padd
 
 <div class="kpis" id="kpis"></div>
 <div class="meta" id="meta">讀取資料中…</div>
+<div class="legend"><span class="mk new">新</span>今日新出現 <span class="mk run">連3</span>連續3日 <span class="mk ex">除息</span>近5日除息 <span class="mk ex hit">⚠除息</span>還原價下不成立</div>
 <div class="err" id="err"></div>
 <main id="main"></main>
 
 <footer>
   資料來源：Yahoo Finance 日線；股票清單：臺灣證券交易所 ISIN 公告。GitHub Actions 於交易日收盤後自動掃描全市場上市櫃普通股。
-  指標採三竹公式：MA 收盤價簡單均線；RSI(6) Wilder 平滑；MACD 以 DI＝(H＋L＋2C)÷4 計算 DIF＝EMA12−EMA26、MACD＝EMA9(DIF)、OSC＝DIF−MACD。均線交叉以最近 3 個交易日為準。
+  指標採三竹公式：MA 收盤價簡單均線；RSI(6) Wilder 平滑；MACD 以 DI＝(H＋L＋2C)÷4 計算 DIF＝EMA12−EMA26、MACD＝EMA9(DIF)、OSC＝DIF−MACD。均線交叉以最近 3 個交易日為準。「新／連N」為訊號連續出現的交易日數；「除息」為近 5 個交易日內依 Yahoo 配息與還原因子偵測，「⚠除息」表示改用還原權息價計算時該訊號不成立。
   <div class="warn">⚠ 投資警語：本頁僅供技術分析研究與資訊參考，不構成任何投資建議或買賣邀約。技術指標具落後性，投資一定有風險，投資人應自行判斷並承擔所有投資結果與責任。</div>
 </footer>
 
@@ -229,9 +242,46 @@ const fam = (s, B) => ({
 const hitCnt = (s, B) => { const f = fam(s, B); return f.ma.length + (f.rsi ? 1 : 0) + f.macd.length; };
 const macdTxt = (s, B) => fam(s, B).macd.map(t => t === 'Cross' ? (B === 'Bull' ? '翻正' : '翻負') : (B === 'Bull' ? '連增' : '連減')).join('＋') || '—';
 
+const opt = {exx: false, nw: false};
+const STREAK_MAX = 10;
+const sideKeys = (s, key) => {
+  const m = /^x(Bull|Bear)/.exec(key);
+  return m ? SIG_KEYS.filter(k => k.includes(m[1]) && s.sig[k]) : (key ? [key] : []);
+};
+const streakOf = (s, key) => {
+  if (!s.st) return null;
+  const v = sideKeys(s, key).map(k => s.st[k]).filter(Boolean);
+  return v.length ? Math.min(...v) : null;
+};
+const exHitOf = (s, key) => !!(s.exHit && sideKeys(s, key).some(k => s.exHit.includes(k)));
+const runTxt = n => n == null ? '' : n === 1 ? '新' : n >= STREAK_MAX ? `連${STREAK_MAX}+` : `連${n}`;
+function marks(s, key) {
+  let h = '';
+  const n = streakOf(s, key);
+  if (n === 1) h += '<span class="mk new">新</span>';
+  else if (n) h += `<span class="mk run">${runTxt(n)}</span>`;
+  if (s.ex) { const hit = exHitOf(s, key); h += `<span class="mk ex${hit ? ' hit' : ''}">${hit ? '⚠' : ''}除息</span>`; }
+  return h;
+}
+
 function compute() {
-  const mkt = $('mkt').value, ind = $('ind').value;
-  results = cur.stocks.filter(s => (!mkt || s.mkt === mkt) && (!ind || s.ind === ind));
+  const mkt = $('mkt').value, ind = $('ind').value, v20 = +$('v20').value;
+  results = [];
+  for (const s of cur.stocks) {
+    if (mkt && s.mkt !== mkt) continue;
+    if (ind && s.ind !== ind) continue;
+    if (v20 && s.v20 != null && s.v20 < v20) continue;
+    let sig = s.sig;
+    if ((opt.exx && s.exHit) || (opt.nw && s.st)) {
+      sig = {};
+      for (const k in s.sig) {
+        if (opt.exx && s.exHit && s.exHit.includes(k)) continue;
+        if (opt.nw && s.st && s.st[k] !== 1) continue;
+        sig[k] = s.sig[k];
+      }
+    }
+    results.push(sig === s.sig ? s : {...s, sig});
+  }
   lists = {};
   SIG_KEYS.forEach(k => lists[k] = results.filter(s => s.sig[k]).sort((a, b) => b.chg - a.chg));
   lists.rsiBull.sort((a, b) => b.rsi - a.rsi);
@@ -284,14 +334,14 @@ function metrics(b, s, B) {
   const ma = f.ma.length ? f.ma.map(n => `<span class="mt" style="background:${MA_COLOR[n]}">${n}</span>`).join('') : '—';
   return `<span>均線 ${ma}</span><span>RSI <b class="${f.rsi ? (B === 'Bull' ? 'up' : 'dn') : ''}">${f2(s.rsi)}</b></span><span>MACD <b>${macdTxt(s, B)}</b></span><span>訊號 <b>${hitCnt(s, B)}</b></span>`;
 }
-const row = (s, mhtml) => `<div class="row" data-id="${esc(s.id)}">
-  <div class="r1"><span class="code">${esc(s.id)}</span><span class="nm">${esc(s.name)}</span><span class="px">${f2(s.close)}</span><span class="chg ${cls(s.chg)}">${pctTxt(s.chg)}</span></div>
+const row = (s, mhtml, key = '') => `<div class="row" data-id="${esc(s.id)}">
+  <div class="r1"><span class="code">${esc(s.id)}</span><span class="nm">${esc(s.name)}</span>${marks(s, key)}<span class="px">${f2(s.close)}</span><span class="chg ${cls(s.chg)}">${pctTxt(s.chg)}</span></div>
   <div class="r2">${mhtml}</div></div>`;
 
 function blockBody(b) {
   if (!b.list.length) return '<div class="none">目前無符合條件個股</div>';
   const n = shown[b.key] || PAGE;
-  const rows = b.list.slice(0, n).map(s => row(s, metrics(b, s, side))).join('');
+  const rows = b.list.slice(0, n).map(s => row(s, metrics(b, s, side), b.key)).join('');
   const rest = b.list.length - n;
   return `<div class="tools"><button data-exp="copy" data-k="${b.key}">⧉ 複製代號</button><button data-exp="csv" data-k="${b.key}">⬇ CSV</button></div>` +
     rows + (rest > 0 ? `<button class="more" data-more="${b.key}">再顯示 ${Math.min(PAGE, rest)} 檔（尚餘 ${rest} 檔）</button>` : '');
@@ -368,14 +418,15 @@ function doQuery() {
   if (exact.length === 1) { $('qInfo').textContent = `資料日期 ${cur.date}`; $('qRes').innerHTML = ''; openSheet(exact[0].id); return; }
   $('qInfo').textContent = `共 ${hits.length} 檔${hits.length === 50 ? '（最多顯示 50 檔）' : ''}，點選看明細`;
   const tagsMini = s => { const k = SIG_KEYS.filter(k => s.sig[k]); return k.length ? `<span>訊號 <b>${k.length}</b></span>` + k.slice(0, 3).map(x => `<span class="${/Bull/.test(x) ? 'up' : 'dn'}">${/Bull/.test(x) ? '▲' : '▼'}${SIG_LABEL[x]}</span>`).join('') : '<span>無訊號</span>'; };
-  $('qRes').innerHTML = `<div class="qlist">${hits.map(s => row(s, `<span>${MKT[s.mkt] || ''}</span><span>${esc(s.ind) || ''}</span>` + tagsMini(s))).join('')}</div>`;
+  $('qRes').innerHTML = `<div class="qlist">${hits.map(s => row(s, `<span>${MKT[s.mkt] || ''}</span><span>${esc(s.ind) || ''}</span>${s.v20 != null ? `<span>均量 <b>${s.v20.toLocaleString()}</b> 張</span>` : ''}` + tagsMini(s))).join('')}</div>`;
 }
 
 /* ---------- 明細彈窗 ---------- */
 function openSheet(id) {
   const s = cur.stocks.find(x => x.id === id); if (!s) return;
   const ks = SIG_KEYS.filter(k => s.sig[k]);
-  const tags = ks.length ? ks.map(k => `<span class="tag ${/Bull/.test(k) ? 'bull' : 'bear'}">${/Bull/.test(k) ? '▲' : '▼'} ${SIG_LABEL[k]}${/^ma(Bull|Bear)/.test(k) ? ' ' + md(s.sig[k].date) : ''}</span>`).join('')
+  const tags = ks.length ? ks.map(k => `<span class="tag ${/Bull/.test(k) ? 'bull' : 'bear'}">${/Bull/.test(k) ? '▲' : '▼'} ${SIG_LABEL[k]}${/^ma(Bull|Bear)/.test(k) ? ' ' + md(s.sig[k].date) : ''}` +
+      `${s.st && s.st[k] ? '・' + runTxt(s.st[k]) : ''}${s.exHit && s.exHit.includes(k) ? '・⚠除息影響' : ''}</span>`).join('')
                          : '<span class="tag na">今日無訊號</span>';
   const xb = hitCnt(s, 'Bull'), xr = hitCnt(s, 'Bear');
   const cell = (k, v, c = '') => `<div class="cell"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`;
@@ -384,7 +435,9 @@ function openSheet(id) {
       <div class="sub">${MKT[s.mkt] || ''}${s.ind ? '｜' + esc(s.ind) : ''}｜資料日期 ${cur.date}</div></div>
       <button class="x" id="shClose" aria-label="關閉">✕</button></div>
     <div class="pxl"><span class="p">${f2(s.close)}</span><span class="g ${cls(s.chg)}">${pctTxt(s.chg)}</span></div>
+    ${s.ex ? `<div class="exnote">💰 ${md(s.ex.d)} 除息${s.ex.div ? ` ${s.ex.div} 元` : ''}${s.exHit ? `。以還原權息價計算時，標示 ⚠ 的訊號不成立，可能是除息跳空造成。` : '，目前訊號不受除息影響。'}</div>` : ''}
     <div class="sec">命中訊號（多方 ${xb}／空方 ${xr}）</div><div class="tags" style="margin-bottom:14px">${tags}</div>
+    <div class="grid" style="margin-bottom:14px"><div class="cell"><div class="k">20 日均量</div><div class="v">${s.v20 == null ? '—' : s.v20.toLocaleString() + ' 張'}</div></div><div class="cell"><div class="k">今日成交量</div><div class="v">${s.vol == null ? '—' : Math.round(s.vol / 1000).toLocaleString() + ' 張'}</div></div></div>
     <div class="sec">均線</div>
     <div class="grid">${MA_N.map(n => cell('MA' + n, f2(s.ma[n]), s.close > s.ma[n] ? 'up' : 'dn')).join('')}</div>
     <div class="sec">RSI ／ MACD</div>
@@ -419,8 +472,8 @@ function exportCsv(b) {
                    : b.kind === 'rsi' ? [f2(s.rsi)]
                    : b.kind === 'macd' ? [f2(s.osc[0]), f2(s.osc[1]), f2(s.osc[2]), f2(s.dif), f2(s.macd)]
                    : [fam(s, B).ma.join(' '), f2(s.rsi), macdTxt(s, B), hitCnt(s, B)];
-  const head = ['資料日期', '多空', '條件', '代號', '名稱', '市場', '產業', '收盤', '漲跌幅(%)', ...extraH];
-  const rows = b.list.map(s => [cur.date, sideTxt, `${b.badge}｜${b.title}`, s.id, s.name, MKT[s.mkt] || '', s.ind || '', f2(s.close), s.chg.toFixed(2), ...extra(s)]);
+  const head = ['資料日期', '多空', '條件', '代號', '名稱', '市場', '產業', '收盤', '漲跌幅(%)', '20日均量(張)', '在榜天數', '除息日', '除息影響', ...extraH];
+  const rows = b.list.map(s => [cur.date, sideTxt, `${b.badge}｜${b.title}`, s.id, s.name, MKT[s.mkt] || '', s.ind || '', f2(s.close), s.chg.toFixed(2), s.v20 ?? '', streakOf(s, b.key) ?? '', s.ex ? s.ex.d : '', exHitOf(s, b.key) ? '是' : '', ...extra(s)]);
   const csv = '﻿' + [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
   const name = `技術訊號_${cur.date}_${sideTxt}_${FILE_LABEL[b.key] || b.key}.csv`;
   const file = new File([csv], name, {type: 'text/csv'});
@@ -458,6 +511,19 @@ $('tabs').addEventListener('click', e => {
 const refilter = () => { compute(); Object.keys(shown).forEach(k => delete shown[k]); renderKpis(); renderMain(); };
 $('mkt').addEventListener('change', refilter);
 $('ind').addEventListener('change', refilter);
+const saveOpts = () => { try {
+  localStorage.setItem('sig_v20', $('v20').value);
+  localStorage.setItem('sig_exx', opt.exx ? '1' : ''); localStorage.setItem('sig_new', opt.nw ? '1' : '');
+} catch (e) {} };
+const syncTg = () => { $('exx').classList.toggle('on', opt.exx); $('newOnly').classList.toggle('on', opt.nw); };
+try {
+  const v = localStorage.getItem('sig_v20'); if (v != null) $('v20').value = v;
+  opt.exx = localStorage.getItem('sig_exx') === '1'; opt.nw = localStorage.getItem('sig_new') === '1';
+} catch (e) {}
+syncTg();
+$('v20').addEventListener('change', () => { saveOpts(); refilter(); });
+$('exx').addEventListener('click', () => { opt.exx = !opt.exx; syncTg(); saveOpts(); if (cur) refilter(); });
+$('newOnly').addEventListener('click', () => { opt.nw = !opt.nw; syncTg(); saveOpts(); if (cur) refilter(); });
 $('date').addEventListener('change', e => show(e.target.value));
 window.addEventListener('resize', setSegTop);
 
@@ -474,7 +540,7 @@ async function show(date) {
     cur = cache[date];
     const st = cur.stats || {};
     const gt = cur.generated_at ? new Date(cur.generated_at).toLocaleString('zh-TW', {hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : '—';
-    $('meta').textContent = `資料日期 ${cur.date}｜有效 ${st.scanned ?? cur.stocks.length} 檔｜更新 ${gt}`;
+    $('meta').textContent = `資料日期 ${cur.date}｜有效 ${st.scanned ?? cur.stocks.length} 檔｜更新 ${gt}` + ((cur.ver || 1) < 2 ? '｜⚠ 舊格式資料，均量／除息／新增標記不適用' : '');
     fillIndustries(); refilter();
   } catch (e) { $('err').textContent = `無法載入 ${date} 的資料：${e.message}`; }
 }
