@@ -519,7 +519,7 @@ def build_payload(stocks, prices, now):
     fresh.sort(key=lambda x: x["id"])
     return {
         "date": max_date,
-        "ver": 8,                       # …7：週RSI6>50 且上揚；8：多方均線交叉視窗改為近 2 個交易日
+        "ver": 9,                       # …7：週RSI6>50 且上揚；8：多方交叉近 2 日；9：多方均線交叉改為當日（近 1 個交易日）
         "generated_at": now.isoformat(timespec="seconds"),
         "source": "Yahoo Finance 日線與配息（yfinance）；股票清單：臺灣證券交易所 ISIN 公告／OpenAPI",
         "stats": {

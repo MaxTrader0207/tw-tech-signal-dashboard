@@ -7,7 +7,7 @@ EMA  ：α = 2/(n+1)，以首筆值為起始
 """
 
 MA_N = (30, 60, 100)
-CROSS_WIN_BULL = 2   # 多方：收盤黃金交叉均線需發生於近 2 個交易日內
+CROSS_WIN_BULL = 1   # 多方：收盤黃金交叉均線需發生於最近 1 個交易日（當日）
 CROSS_WIN_BEAR = 3   # 空方：收盤死亡交叉均線需發生於近 3 個交易日內
 MIN_BARS = 110
 
@@ -212,7 +212,7 @@ def analyze(rows):
         m = sma(c, n)
         res["ma"][str(n)] = m[last]
         gx = dx = None
-        for i in range(last, last - max(CROSS_WIN_BULL, CROSS_WIN_BEAR), -1):  # 多方近 2 日、空方近 3 日
+        for i in range(last, last - max(CROSS_WIN_BULL, CROSS_WIN_BEAR), -1):  # 多方當日、空方近 3 日
             if m[i - 1] is None:
                 continue
             if gx is None and i > last - CROSS_WIN_BULL and c[i - 1] <= m[i - 1] and c[i] > m[i]:
