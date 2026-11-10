@@ -33,19 +33,24 @@ button{cursor:pointer}
 .t1 h1{margin:0;font-size:1.15rem;font-weight:900;flex:1;white-space:nowrap}
 .t1 h1 span{color:var(--accent)}
 .t1 a{color:var(--muted);font-size:.8rem;text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:4px 8px;white-space:nowrap}
-.t2{display:grid;grid-template-columns:1.25fr .8fr 1fr;gap:6px;margin-bottom:8px}
-.t2 select{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:7px 6px;font-size:14px;appearance:none;-webkit-appearance:none;
+.t2{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -12px 8px;padding:0 12px;-webkit-overflow-scrolling:touch}
+.t2::-webkit-scrollbar{display:none}
+.t2 .f{flex:0 0 auto;display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:0 0 0 10px;white-space:nowrap}
+.t2 .f .lb{color:var(--muted);font-size:.8rem;font-weight:700}
+.t2 .f.date{border-color:rgba(245,184,61,.55)}
+.t2 .f.date .lb{color:var(--accent)}
+.t2 select{width:auto;max-width:none;border:none !important;background-color:transparent !important;font-weight:700;border:1px solid var(--line);border-radius:9px;padding:7px 6px;font-size:14px;appearance:none;-webkit-appearance:none;
   background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
-  background-position:calc(100% - 13px) 55%,calc(100% - 8px) 55%;background-size:5px 5px;background-repeat:no-repeat;padding-right:20px;text-overflow:ellipsis}
+  background-position:calc(100% - 13px) 55%,calc(100% - 8px) 55%;background-size:5px 5px;background-repeat:no-repeat;padding-right:22px}
 .tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;margin:0 -12px;padding:0 8px}
 .tabs::-webkit-scrollbar{display:none}
-.tab{flex:1 0 auto;background:none;border:none;border-bottom:3px solid transparent;color:var(--muted);font-weight:700;font-size:15px;padding:8px 10px 7px}
+.tab{flex:0 0 auto;background:none;border:none;border-bottom:3px solid transparent;color:var(--muted);font-weight:700;font-size:15px;padding:8px 10px 7px}
 .tab.on{color:var(--text);border-color:var(--accent)}
 
 /* KPI 橫向捲動 */
 .kpis{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:10px 12px 2px}
 .kpis::-webkit-scrollbar{display:none}
-.kpi{flex:0 0 auto;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px 12px;min-width:84px}
+.kpi{flex:0 0 auto;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px 12px;min-width:5.4em}
 .kpi .t{color:var(--muted);font-size:.72rem;white-space:nowrap}
 .kpi .v{font-family:var(--mono);font-size:1.3rem;font-weight:800}
 .kpi.bull .v{color:var(--bull)} .kpi.bear .v{color:var(--bear)}
@@ -67,9 +72,10 @@ main{padding:10px 12px}
 .blk.ma30{--c:#f5b83d} .blk.ma60{--c:#4da3ff} .blk.ma100{--c:#b07cff}
 .blk.oscx{--c:#22c7d6} .blk.osce{--c:#ff8a3d} .blk.rsi{--c:#e879f9}
 .blk.x3{--c:#ff5fa2} .blk.xmd{--c:#38bdf8} .blk.xmr{--c:#a3e635} .blk.xrd{--c:#fbbf24}
-.bh{display:flex;align-items:center;gap:8px;padding:11px 10px 11px 12px;user-select:none}
+.bh{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:10px 10px 10px 12px;user-select:none}
 .bh .badge{background:var(--c);color:#111;border-radius:6px;padding:1px 7px;font-weight:800;font-size:.78rem;white-space:nowrap}
-.bh .ti{flex:1;font-weight:700;font-size:.9rem;line-height:1.3}
+.bh .sp{flex:1}
+.bh .ti{order:5;flex:1 0 100%;font-weight:700;font-size:.9rem;line-height:1.3}
 .bh .n{font-family:var(--mono);font-weight:800;color:var(--c);border:1px solid var(--c);border-radius:999px;padding:0 9px;font-size:.9rem}
 .bh .chev{color:var(--muted);transition:transform .2s;font-size:.8rem}
 .blk.open .bh .chev{transform:rotate(90deg)}
@@ -83,9 +89,9 @@ main{padding:10px 12px}
 /* 個股卡片 */
 .row{padding:9px 12px;border-top:1px solid rgba(38,49,74,.6);content-visibility:auto;contain-intrinsic-size:auto 58px}
 .row:active{background:var(--panel2)}
-.r1{display:flex;align-items:baseline;gap:8px}
+.r1{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px}
 .r1 .code{font-family:var(--mono);font-weight:800;font-size:1rem}
-.r1 .nm{flex:1;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.r1 .nm{flex:1 1 5em;min-width:0;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .r1 .px{font-family:var(--mono);font-size:.95rem}
 .r1 .chg{font-family:var(--mono);font-size:.9rem;min-width:64px;text-align:right;font-weight:700}
 .r2{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:3px;color:var(--muted);font-size:.78rem}
@@ -119,7 +125,7 @@ main{padding:10px 12px}
 .pxl{display:flex;align-items:baseline;gap:10px;margin:8px 0 12px}
 .pxl .p{font-family:var(--mono);font-size:1.8rem;font-weight:900}
 .pxl .g{font-family:var(--mono);font-size:1.1rem;font-weight:800}
-.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(5.4em,40%),1fr));gap:8px;margin-bottom:12px}
 .cell{background:var(--panel2);border-radius:10px;padding:7px 9px}
 .cell .k{color:var(--muted);font-size:.72rem}
 .cell .v{font-family:var(--mono);font-weight:800;font-size:1rem}
@@ -141,10 +147,10 @@ footer .warn{background:#1c1410;border:1px solid #5a3c14;border-radius:10px;padd
     <h1>台股技術訊號 <span>多空</span></h1>
     <a href="../" id="deskLink">🖥 電腦版</a>
   </div>
-  <div class="t2">
-    <select id="date" aria-label="資料日期"><option>載入中…</option></select>
-    <select id="mkt" aria-label="市場"><option value="">全部市場</option><option value="TWSE">上市</option><option value="TPEx">上櫃</option></select>
-    <select id="ind" aria-label="產業"><option value="">全部產業</option></select>
+  <div class="t2" id="filters">
+    <label class="f date"><span class="lb">📅 日期</span><select id="date"><option>載入中…</option></select></label>
+    <label class="f"><span class="lb">市場</span><select id="mkt"><option value="">全部</option><option value="TWSE">上市</option><option value="TPEx">上櫃</option></select></label>
+    <label class="f"><span class="lb">產業</span><select id="ind"><option value="">全部</option></select></label>
   </div>
   <nav class="tabs" id="tabs">
     <button class="tab on" data-tab="x">🎯 交集</button>
@@ -323,7 +329,7 @@ function renderMain() {
        <button class="bear ${side === 'Bear' ? 'on' : ''}" data-side="Bear">▼ 空方<span class="c">${sideCount(tab, 'Bear')}</span></button>
      </div>` +
     bs.map(b => `<section class="blk ${b.cls} ${open.has(b.key) ? 'open' : ''} ${b.list.length ? '' : 'empty'}" data-k="${b.key}">
-      <div class="bh" data-toggle="${b.key}"><span class="badge">${b.badge}</span><span class="ti">${b.title}</span><span class="n">${b.list.length}</span><span class="chev">▶</span></div>
+      <div class="bh" data-toggle="${b.key}"><span class="badge">${b.badge}</span><span class="sp"></span><span class="n">${b.list.length}</span><span class="chev">▶</span><span class="ti">${b.title}</span></div>
       <div class="bb">${open.has(b.key) ? blockBody(b) : ''}</div></section>`).join('');
   setSegTop();
 }
@@ -369,7 +375,7 @@ function doQuery() {
 function openSheet(id) {
   const s = cur.stocks.find(x => x.id === id); if (!s) return;
   const ks = SIG_KEYS.filter(k => s.sig[k]);
-  const tags = ks.length ? ks.map(k => `<span class="tag ${/Bull/.test(k) ? 'bull' : 'bear'}">${/Bull/.test(k) ? '▲' : '▼'} ${SIG_LABEL[k]}${/^ma/.test(k) ? ' ' + md(s.sig[k].date) : ''}</span>`).join('')
+  const tags = ks.length ? ks.map(k => `<span class="tag ${/Bull/.test(k) ? 'bull' : 'bear'}">${/Bull/.test(k) ? '▲' : '▼'} ${SIG_LABEL[k]}${/^ma(Bull|Bear)/.test(k) ? ' ' + md(s.sig[k].date) : ''}</span>`).join('')
                          : '<span class="tag na">今日無訊號</span>';
   const xb = hitCnt(s, 'Bull'), xr = hitCnt(s, 'Bear');
   const cell = (k, v, c = '') => `<div class="cell"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`;
@@ -459,7 +465,7 @@ window.addEventListener('resize', setSegTop);
 function fillIndustries() {
   const keep = $('ind').value;
   const inds = [...new Set(cur.stocks.map(s => s.ind).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
-  $('ind').innerHTML = '<option value="">全部產業</option>' + inds.map(i => `<option${i === keep ? ' selected' : ''}>${esc(i)}</option>`).join('');
+  $('ind').innerHTML = '<option value="">全部</option>' + inds.map(i => `<option${i === keep ? ' selected' : ''}>${esc(i)}</option>`).join('');
 }
 async function show(date) {
   $('err').textContent = '';
