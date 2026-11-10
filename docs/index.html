@@ -21,6 +21,11 @@ h1{margin:0;font-size:2rem;font-weight:900;letter-spacing:.04em}
 h1 span{color:var(--accent)}
 .sub{color:var(--muted);font-size:1rem}
 .mono{font-family:"JetBrains Mono",monospace}
+.hdr-r{display:flex;align-items:center;gap:14px}
+.mlink{color:var(--text);text-decoration:none;border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:6px 12px;font-weight:700;font-size:.95rem}
+.mlink:hover{border-color:var(--accent);color:var(--accent)}
+.mbanner{display:none;background:var(--accent);color:#111;font-weight:800;text-decoration:none;border-radius:12px;padding:12px 14px;margin-bottom:14px;text-align:center}
+@media (max-width:760px){.mbanner{display:block}}
 
 .ctrl{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:18px;display:grid;gap:14px}
 .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
@@ -125,8 +130,9 @@ footer{margin-top:26px;border-top:2px solid var(--line);padding-top:16px}
     <h1>台股技術訊號 <span>多空儀表板</span></h1>
     <div class="sub">均線交叉 ‧ RSI(6) ‧ MACD 柱狀體 ｜ 日線 ｜ 三竹股市計算公式 ｜ 全市場上市櫃普通股</div>
   </div>
-  <div class="sub mono" id="clock"></div>
+  <div class="hdr-r"><a class="mlink" href="m/">📱 手機版</a><div class="sub mono" id="clock"></div></div>
 </header>
+<a class="mbanner" id="mbanner" href="m/">📱 偵測到手機螢幕，點此改用手機版瀏覽更順暢 →</a>
 
 <div class="ctrl">
   <div class="row">

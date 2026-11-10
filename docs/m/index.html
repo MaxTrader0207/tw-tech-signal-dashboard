@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f17">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="技術訊號">
+<title>台股技術訊號 手機版</title>
+<style>
+:root{
+  --bg:#0b0f17; --panel:#121826; --panel2:#182033; --line:#26314a;
+  --text:#e8edf7; --muted:#8c99b5; --accent:#f5b83d;
+  --bull:#ff4d5e; --bull-bg:rgba(255,77,94,.12);
+  --bear:#1fd18b; --bear-bg:rgba(31,209,139,.12);
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{font-size:16px;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;
+  line-height:1.45;padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+button,select,input{font-family:inherit;font-size:16px;color:var(--text)}
+button{cursor:pointer}
+.up{color:var(--bull)} .dn{color:var(--bear)}
+.mono{font-family:var(--mono)}
+
+/* 頂部 */
+.top{position:sticky;top:0;z-index:20;background:rgba(11,15,23,.96);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--line);padding:calc(8px + env(safe-area-inset-top)) 12px 0}
+.t1{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.t1 h1{margin:0;font-size:1.15rem;font-weight:900;flex:1;white-space:nowrap}
+.t1 h1 span{color:var(--accent)}
+.t1 a{color:var(--muted);font-size:.8rem;text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:4px 8px;white-space:nowrap}
+.t2{display:grid;grid-template-columns:1.25fr .8fr 1fr;gap:6px;margin-bottom:8px}
+.t2 select{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:7px 6px;font-size:14px;appearance:none;-webkit-appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:calc(100% - 13px) 55%,calc(100% - 8px) 55%;background-size:5px 5px;background-repeat:no-repeat;padding-right:20px;text-overflow:ellipsis}
+.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;margin:0 -12px;padding:0 8px}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:1 0 auto;background:none;border:none;border-bottom:3px solid transparent;color:var(--muted);font-weight:700;font-size:15px;padding:8px 10px 7px}
+.tab.on{color:var(--text);border-color:var(--accent)}
+
+/* KPI 橫向捲動 */
+.kpis{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:10px 12px 2px}
+.kpis::-webkit-scrollbar{display:none}
+.kpi{flex:0 0 auto;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px 12px;min-width:84px}
+.kpi .t{color:var(--muted);font-size:.72rem;white-space:nowrap}
+.kpi .v{font-family:var(--mono);font-size:1.3rem;font-weight:800}
+.kpi.bull .v{color:var(--bull)} .kpi.bear .v{color:var(--bear)}
+.meta{color:var(--muted);font-size:.75rem;padding:6px 12px 0}
+.err{color:#ff9b9b;font-size:.9rem;padding:8px 12px;white-space:pre-wrap}
+
+main{padding:10px 12px}
+.desc{color:var(--muted);font-size:.8rem;margin:0 2px 10px}
+
+/* 多空切換 */
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:3px;margin-bottom:12px;position:sticky;top:var(--seg-top,118px);z-index:10}
+.seg button{background:none;border:none;border-radius:9px;padding:9px 4px;font-weight:800;font-size:15px;color:var(--muted)}
+.seg button .c{font-family:var(--mono);margin-left:6px;font-size:.9rem}
+.seg button.on.bull{background:var(--bull-bg);color:var(--bull);box-shadow:inset 0 0 0 1px rgba(255,77,94,.45)}
+.seg button.on.bear{background:var(--bear-bg);color:var(--bear);box-shadow:inset 0 0 0 1px rgba(31,209,139,.45)}
+
+/* 區塊 */
+.blk{--c:#f5b83d;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:12px;margin-bottom:10px;overflow:hidden}
+.blk.ma30{--c:#f5b83d} .blk.ma60{--c:#4da3ff} .blk.ma100{--c:#b07cff}
+.blk.oscx{--c:#22c7d6} .blk.osce{--c:#ff8a3d} .blk.rsi{--c:#e879f9}
+.blk.x3{--c:#ff5fa2} .blk.xmd{--c:#38bdf8} .blk.xmr{--c:#a3e635} .blk.xrd{--c:#fbbf24}
+.bh{display:flex;align-items:center;gap:8px;padding:11px 10px 11px 12px;user-select:none}
+.bh .badge{background:var(--c);color:#111;border-radius:6px;padding:1px 7px;font-weight:800;font-size:.78rem;white-space:nowrap}
+.bh .ti{flex:1;font-weight:700;font-size:.9rem;line-height:1.3}
+.bh .n{font-family:var(--mono);font-weight:800;color:var(--c);border:1px solid var(--c);border-radius:999px;padding:0 9px;font-size:.9rem}
+.bh .chev{color:var(--muted);transition:transform .2s;font-size:.8rem}
+.blk.open .bh .chev{transform:rotate(90deg)}
+.blk.empty .bh{opacity:.55}
+.bb{display:none;border-top:1px solid var(--line)}
+.blk.open .bb{display:block}
+.tools{display:flex;gap:6px;padding:8px 10px;justify-content:flex-end}
+.tools button{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:13px;font-weight:700;color:var(--muted)}
+.tools button.done{color:var(--bear);border-color:var(--bear)}
+
+/* 個股卡片 */
+.row{padding:9px 12px;border-top:1px solid rgba(38,49,74,.6);content-visibility:auto;contain-intrinsic-size:auto 58px}
+.row:active{background:var(--panel2)}
+.r1{display:flex;align-items:baseline;gap:8px}
+.r1 .code{font-family:var(--mono);font-weight:800;font-size:1rem}
+.r1 .nm{flex:1;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.r1 .px{font-family:var(--mono);font-size:.95rem}
+.r1 .chg{font-family:var(--mono);font-size:.9rem;min-width:64px;text-align:right;font-weight:700}
+.r2{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:3px;color:var(--muted);font-size:.78rem}
+.r2 b{color:var(--text);font-family:var(--mono);font-weight:700}
+.mt{display:inline-block;border-radius:4px;padding:0 5px;font-weight:800;color:#111;font-size:.72rem;margin-right:2px;font-family:var(--mono)}
+.more{display:block;width:calc(100% - 20px);margin:8px 10px 10px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:9px;font-weight:700;color:var(--accent);font-size:14px}
+.none{color:var(--muted);font-size:.85rem;padding:10px 12px}
+
+/* 查詢 */
+.qbar{display:flex;gap:8px;margin-bottom:10px}
+.qbar input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.qbar button{background:var(--accent);color:#111;border:none;border-radius:10px;padding:0 16px;font-weight:800}
+.qinfo{color:var(--muted);font-size:.85rem;margin:0 2px 8px}
+.qlist{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.qlist .row:first-child{border-top:none}
+
+/* 明細彈窗 */
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:40;opacity:0;pointer-events:none;transition:opacity .2s}
+.mask.on{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:41;background:var(--panel);border-top:1px solid var(--line);border-radius:18px 18px 0 0;
+  max-height:86vh;overflow-y:auto;-webkit-overflow-scrolling:touch;transform:translateY(105%);transition:transform .25s ease;
+  padding:8px 16px calc(18px + env(safe-area-inset-bottom))}
+.sheet.on{transform:none}
+.grab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 10px}
+.sh{display:flex;align-items:flex-start;gap:10px}
+.sh .ttl{flex:1}
+.sh .ttl .c{font-family:var(--mono);font-weight:900;font-size:1.3rem}
+.sh .ttl .nm{font-size:1.15rem;font-weight:800;margin-left:6px}
+.sh .ttl .sub{color:var(--muted);font-size:.82rem}
+.sh .x{background:var(--panel2);border:1px solid var(--line);border-radius:50%;width:34px;height:34px;font-size:18px;line-height:1;color:var(--muted)}
+.pxl{display:flex;align-items:baseline;gap:10px;margin:8px 0 12px}
+.pxl .p{font-family:var(--mono);font-size:1.8rem;font-weight:900}
+.pxl .g{font-family:var(--mono);font-size:1.1rem;font-weight:800}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.cell{background:var(--panel2);border-radius:10px;padding:7px 9px}
+.cell .k{color:var(--muted);font-size:.72rem}
+.cell .v{font-family:var(--mono);font-weight:800;font-size:1rem}
+.sec{font-size:.85rem;color:var(--muted);margin:4px 0 6px;font-weight:700}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tag{border-radius:999px;padding:3px 10px;font-size:.82rem;font-weight:800}
+.tag.bull{background:var(--bull-bg);color:var(--bull);border:1px solid rgba(255,77,94,.4)}
+.tag.bear{background:var(--bear-bg);color:var(--bear);border:1px solid rgba(31,209,139,.4)}
+.tag.na{color:var(--muted);border:1px solid var(--line)}
+
+footer{color:var(--muted);font-size:.72rem;padding:14px 14px 0;line-height:1.6}
+footer .warn{background:#1c1410;border:1px solid #5a3c14;border-radius:10px;padding:10px 12px;color:#f3d9a8;margin-top:8px}
+</style>
+</head>
+<body>
+
+<div class="top" id="top">
+  <div class="t1">
+    <h1>台股技術訊號 <span>多空</span></h1>
+    <a href="../" id="deskLink">🖥 電腦版</a>
+  </div>
+  <div class="t2">
+    <select id="date" aria-label="資料日期"><option>載入中…</option></select>
+    <select id="mkt" aria-label="市場"><option value="">全部市場</option><option value="TWSE">上市</option><option value="TPEx">上櫃</option></select>
+    <select id="ind" aria-label="產業"><option value="">全部產業</option></select>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button class="tab on" data-tab="x">🎯 交集</button>
+    <button class="tab" data-tab="ma">📈 均線</button>
+    <button class="tab" data-tab="rsi">⚡ RSI</button>
+    <button class="tab" data-tab="macd">📊 MACD</button>
+    <button class="tab" data-tab="q">🔍 查詢</button>
+  </nav>
+</div>
+
+<div class="kpis" id="kpis"></div>
+<div class="meta" id="meta">讀取資料中…</div>
+<div class="err" id="err"></div>
+<main id="main"></main>
+
+<footer>
+  資料來源：Yahoo Finance 日線；股票清單：臺灣證券交易所 ISIN 公告。GitHub Actions 於交易日收盤後自動掃描全市場上市櫃普通股。
+  指標採三竹公式：MA 收盤價簡單均線；RSI(6) Wilder 平滑；MACD 以 DI＝(H＋L＋2C)÷4 計算 DIF＝EMA12−EMA26、MACD＝EMA9(DIF)、OSC＝DIF−MACD。均線交叉以最近 3 個交易日為準。
+  <div class="warn">⚠ 投資警語：本頁僅供技術分析研究與資訊參考，不構成任何投資建議或買賣邀約。技術指標具落後性，投資一定有風險，投資人應自行判斷並承擔所有投資結果與責任。</div>
+</footer>
+
+<div class="mask" id="mask"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+
+<script>
+(() => {
+const DATA = '../data/';
+const PAGE = 30;
+const $ = id => document.getElementById(id);
+const cache = {};
+let cur = null, latestDate = '', results = [];
+let tab = 'x', side = 'Bull';
+const open = new Set(), shown = {};
+let BLK = {};                 // key -> block（目前分頁）
+let lists = {}, xi = {};
+
+/* ---------- 格式 ---------- */
+const f2 = x => x == null || isNaN(x) ? '—' : (+x).toFixed(2);
+const pctTxt = x => x == null ? '—' : `${x > 0 ? '+' : ''}${x.toFixed(2)}%`;
+const cls = x => x > 0 ? 'up' : x < 0 ? 'dn' : '';
+const md = d => d ? d.slice(5).replace('-', '/') : '—';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+const MKT = {TWSE: '上市', TPEx: '上櫃'};
+const MA_N = [30, 60, 100];
+const MA_COLOR = {30: '#f5b83d', 60: '#4da3ff', 100: '#b07cff'};
+const SIG_KEYS = ['maBull30','maBull60','maBull100','maBear30','maBear60','maBear100','rsiBull','rsiBear','macdBullCross','macdBullExp','macdBearCross','macdBearExp'];
+const SIG_LABEL = {
+  maBull30: '黃金交叉 MA30', maBull60: '黃金交叉 MA60', maBull100: '黃金交叉 MA100',
+  maBear30: '死亡交叉 MA30', maBear60: '死亡交叉 MA60', maBear100: '死亡交叉 MA100',
+  rsiBull: 'RSI(6) ≥ 80', rsiBear: 'RSI(6) ≤ 20',
+  macdBullCross: 'OSC 翻正', macdBullExp: 'OSC 連 2 日放大',
+  macdBearCross: 'OSC 翻負', macdBearExp: 'OSC 連 2 日減少',
+};
+const FILE_LABEL = {
+  maBull30: 'MA30_黃金交叉', maBull60: 'MA60_黃金交叉', maBull100: 'MA100_黃金交叉',
+  maBear30: 'MA30_死亡交叉', maBear60: 'MA60_死亡交叉', maBear100: 'MA100_死亡交叉',
+  rsiBull: 'RSI6_80以上', rsiBear: 'RSI6_20以下',
+  macdBullCross: 'MACD_柱狀體翻正', macdBullExp: 'MACD_柱狀體連2日放大',
+  macdBearCross: 'MACD_柱狀體翻負', macdBearExp: 'MACD_柱狀體連2日減少',
+  xBull3: '交集_三指標共振', xBullMD: '交集_均線+MACD', xBullMR: '交集_均線+RSI', xBullRD: '交集_RSI+MACD',
+  xBear3: '交集_三指標共振', xBearMD: '交集_均線+MACD', xBearMR: '交集_均線+RSI', xBearRD: '交集_RSI+MACD',
+};
+
+/* ---------- 資料 ---------- */
+async function load(path) {
+  const r = await fetch(DATA + path + '?t=' + Math.floor(Date.now() / 60000), {cache: 'no-store'});
+  if (!r.ok) throw new Error(`${path}：HTTP ${r.status}`);
+  return r.json();
+}
+
+const fam = (s, B) => ({
+  ma: MA_N.filter(n => s.sig['ma' + B + n]),
+  rsi: !!s.sig['rsi' + B],
+  macd: ['Cross', 'Exp'].filter(t => s.sig['macd' + B + t]),
+});
+const hitCnt = (s, B) => { const f = fam(s, B); return f.ma.length + (f.rsi ? 1 : 0) + f.macd.length; };
+const macdTxt = (s, B) => fam(s, B).macd.map(t => t === 'Cross' ? (B === 'Bull' ? '翻正' : '翻負') : (B === 'Bull' ? '連增' : '連減')).join('＋') || '—';
+
+function compute() {
+  const mkt = $('mkt').value, ind = $('ind').value;
+  results = cur.stocks.filter(s => (!mkt || s.mkt === mkt) && (!ind || s.ind === ind));
+  lists = {};
+  SIG_KEYS.forEach(k => lists[k] = results.filter(s => s.sig[k]).sort((a, b) => b.chg - a.chg));
+  lists.rsiBull.sort((a, b) => b.rsi - a.rsi);
+  lists.rsiBear.sort((a, b) => a.rsi - b.rsi);
+  xi = {};
+  for (const B of ['Bull', 'Bear']) {
+    const o = {all: [], md: [], mr: [], rd: []};
+    results.forEach(s => {
+      const f = fam(s, B), m = f.ma.length > 0, r = f.rsi, d = f.macd.length > 0;
+      if (m && r && d) o.all.push(s); else if (m && d) o.md.push(s); else if (m && r) o.mr.push(s); else if (r && d) o.rd.push(s);
+    });
+    Object.values(o).forEach(a => a.sort((x, y) => hitCnt(y, B) - hitCnt(x, B) || (B === 'Bull' ? y.chg - x.chg : x.chg - y.chg)));
+    xi[B] = o;
+  }
+}
+
+function blocksFor(t, B) {
+  const bull = B === 'Bull';
+  if (t === 'x') {
+    const o = xi[B];
+    return [
+      {key: `x${B}3`, cls: 'x3', badge: '三指標共振', title: '均線＋RSI＋MACD 同時命中', list: o.all, kind: 'x'},
+      {key: `x${B}MD`, cls: 'xmd', badge: '均線＋MACD', title: '兩項命中', list: o.md, kind: 'x'},
+      {key: `x${B}MR`, cls: 'xmr', badge: '均線＋RSI', title: '兩項命中', list: o.mr, kind: 'x'},
+      {key: `x${B}RD`, cls: 'xrd', badge: 'RSI＋MACD', title: '兩項命中', list: o.rd, kind: 'x'},
+    ];
+  }
+  if (t === 'ma') return MA_N.map(n => ({
+    key: `ma${B}${n}`, cls: `ma${n}`, badge: `MA${n}`, n, kind: 'ma', list: lists[`ma${B}${n}`],
+    title: bull ? `收盤價黃金交叉，MA${n} 上揚` : `收盤價死亡交叉，MA${n} 下彎`,
+  }));
+  if (t === 'rsi') return [{key: `rsi${B}`, cls: 'rsi', badge: 'RSI(6)', kind: 'rsi', list: lists[`rsi${B}`], title: bull ? 'RSI(6) ≥ 80' : 'RSI(6) ≤ 20'}];
+  if (t === 'macd') return [
+    {key: `macd${B}Cross`, cls: 'oscx', badge: '交叉', kind: 'macd', list: lists[`macd${B}Cross`], title: bull ? '柱狀體由 ≤0 轉 >0' : '柱狀體由 ≥0 轉 <0'},
+    {key: `macd${B}Exp`, cls: 'osce', badge: '動能', kind: 'macd', list: lists[`macd${B}Exp`], title: bull ? '柱狀體 >0 且連 2 日放大' : '柱狀體 <0 且連 2 日減少'},
+  ];
+  return [];
+}
+const sideCount = (t, B) => new Set(blocksFor(t, B).flatMap(b => b.list.map(s => s.id))).size;
+
+/* ---------- 卡片 ---------- */
+function metrics(b, s, B) {
+  if (b.kind === 'ma') {
+    const g = s.sig[b.key];
+    return `<span>MA${b.n} <b>${f2(s.ma[b.n])}</b></span><span>交叉 <b>${md(g.date)}</b></span><span>斜率 <b class="${cls(g.slope)}">${g.slope > 0 ? '+' : ''}${g.slope.toFixed(2)}</b></span>`;
+  }
+  if (b.kind === 'rsi') return `<span>RSI(6) <b class="${B === 'Bull' ? 'up' : 'dn'}">${f2(s.rsi)}</b></span><span>OSC <b class="${cls(s.osc[2])}">${f2(s.osc[2])}</b></span>`;
+  if (b.kind === 'macd') return `<span>OSC <b>${f2(s.osc[0])}</b> → <b>${f2(s.osc[1])}</b> → <b class="${cls(s.osc[2])}">${f2(s.osc[2])}</b></span><span>DIF <b>${f2(s.dif)}</b></span><span>MACD <b>${f2(s.macd)}</b></span>`;
+  const f = fam(s, B);
+  const ma = f.ma.length ? f.ma.map(n => `<span class="mt" style="background:${MA_COLOR[n]}">${n}</span>`).join('') : '—';
+  return `<span>均線 ${ma}</span><span>RSI <b class="${f.rsi ? (B === 'Bull' ? 'up' : 'dn') : ''}">${f2(s.rsi)}</b></span><span>MACD <b>${macdTxt(s, B)}</b></span><span>訊號 <b>${hitCnt(s, B)}</b></span>`;
+}
+const row = (s, mhtml) => `<div class="row" data-id="${esc(s.id)}">
+  <div class="r1"><span class="code">${esc(s.id)}</span><span class="nm">${esc(s.name)}</span><span class="px">${f2(s.close)}</span><span class="chg ${cls(s.chg)}">${pctTxt(s.chg)}</span></div>
+  <div class="r2">${mhtml}</div></div>`;
+
+function blockBody(b) {
+  if (!b.list.length) return '<div class="none">目前無符合條件個股</div>';
+  const n = shown[b.key] || PAGE;
+  const rows = b.list.slice(0, n).map(s => row(s, metrics(b, s, side))).join('');
+  const rest = b.list.length - n;
+  return `<div class="tools"><button data-exp="copy" data-k="${b.key}">⧉ 複製代號</button><button data-exp="csv" data-k="${b.key}">⬇ CSV</button></div>` +
+    rows + (rest > 0 ? `<button class="more" data-more="${b.key}">再顯示 ${Math.min(PAGE, rest)} 檔（尚餘 ${rest} 檔）</button>` : '');
+}
+
+/* ---------- 畫面 ---------- */
+function renderKpis() {
+  const u = (t, B) => sideCount(t, B);
+  $('kpis').innerHTML = [
+    ['掃描檔數', results.length, ''],
+    ['交集多方', u('x', 'Bull'), 'bull'], ['交集空方', u('x', 'Bear'), 'bear'],
+    ['均線多方', u('ma', 'Bull'), 'bull'], ['均線空方', u('ma', 'Bear'), 'bear'],
+    ['RSI 多方', u('rsi', 'Bull'), 'bull'], ['RSI 空方', u('rsi', 'Bear'), 'bear'],
+    ['MACD 多方', u('macd', 'Bull'), 'bull'], ['MACD 空方', u('macd', 'Bear'), 'bear'],
+  ].map(([t, v, c]) => `<div class="kpi ${c}"><div class="t">${t}</div><div class="v">${v}</div></div>`).join('');
+}
+
+const DESC = {
+  x: '同時命中兩類以上指標（均線、RSI、MACD）的個股，每檔只列在命中最多的組合。',
+  ma: '日線收盤價與 MA30／60／100 交叉（近 3 個交易日內），並搭配均線方向。',
+  rsi: 'RSI 參數 6，日線收盤。',
+  macd: 'MACD(12,26,9)，柱狀體 OSC＝DIF−MACD。',
+};
+
+function renderMain() {
+  if (!cur) return;
+  if (tab === 'q') { renderQuery(); return; }
+  const bs = blocksFor(tab, side);
+  BLK = {}; bs.forEach(b => BLK[b.key] = b);
+  if (![...open].some(k => BLK[k])) { const first = bs.find(b => b.list.length); if (first) open.add(first.key); }
+  $('main').innerHTML =
+    `<div class="desc">${DESC[tab]}</div>
+     <div class="seg" id="seg">
+       <button class="bull ${side === 'Bull' ? 'on' : ''}" data-side="Bull">▲ 多方<span class="c">${sideCount(tab, 'Bull')}</span></button>
+       <button class="bear ${side === 'Bear' ? 'on' : ''}" data-side="Bear">▼ 空方<span class="c">${sideCount(tab, 'Bear')}</span></button>
+     </div>` +
+    bs.map(b => `<section class="blk ${b.cls} ${open.has(b.key) ? 'open' : ''} ${b.list.length ? '' : 'empty'}" data-k="${b.key}">
+      <div class="bh" data-toggle="${b.key}"><span class="badge">${b.badge}</span><span class="ti">${b.title}</span><span class="n">${b.list.length}</span><span class="chev">▶</span></div>
+      <div class="bb">${open.has(b.key) ? blockBody(b) : ''}</div></section>`).join('');
+  setSegTop();
+}
+
+function refreshBlock(key) {
+  const sec = document.querySelector(`.blk[data-k="${key}"]`); if (!sec) return;
+  sec.classList.toggle('open', open.has(key));
+  sec.querySelector('.bb').innerHTML = open.has(key) ? blockBody(BLK[key]) : '';
+}
+
+function setSegTop() { document.documentElement.style.setProperty('--seg-top', ($('top').offsetHeight + 6) + 'px'); }
+
+/* ---------- 查詢 ---------- */
+let qText = '';
+function renderQuery() {
+  $('main').innerHTML = `<div class="qbar"><input id="q" type="search" inputmode="search" enterkeyhint="search" placeholder="代號或名稱，如 2330、台積" value="${esc(qText)}" autocomplete="off"><button id="qBtn">查詢</button></div>
+    <div class="qinfo" id="qInfo">輸入代號或名稱後按查詢；點選結果可看完整明細。</div><div id="qRes"></div>`;
+  $('qBtn').onclick = doQuery;
+  $('q').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doQuery(); $('q').blur(); } });
+  if (qText) doQuery();
+}
+function doQuery() {
+  qText = $('q').value.trim();
+  const kw = qText; if (!kw) { $('qRes').innerHTML = ''; return; }
+  const K = kw.toUpperCase();
+  const exact = results.filter(s => s.id === K);
+  const hits = exact.length ? exact : results.filter(s => s.id.startsWith(K) || s.name.includes(kw)).slice(0, 50);
+  if (!hits.length) {
+    const ex = cur.excluded || {};
+    const why = (ex.no_data || []).includes(K) ? 'Yahoo 查無日線資料'
+              : (ex.insufficient || []).includes(K) ? '資料未達 110 個交易日（可能為新上市櫃）'
+              : (ex.stale || []).includes(K) ? '最新資料非當日（可能停牌）'
+              : ($('mkt').value || $('ind').value) ? '不在目前的市場／產業篩選範圍內' : '不在上市櫃普通股清單內';
+    $('qInfo').textContent = `「${kw}」無結果：${why}`; $('qRes').innerHTML = ''; return;
+  }
+  if (exact.length === 1) { $('qInfo').textContent = `資料日期 ${cur.date}`; $('qRes').innerHTML = ''; openSheet(exact[0].id); return; }
+  $('qInfo').textContent = `共 ${hits.length} 檔${hits.length === 50 ? '（最多顯示 50 檔）' : ''}，點選看明細`;
+  const tagsMini = s => { const k = SIG_KEYS.filter(k => s.sig[k]); return k.length ? `<span>訊號 <b>${k.length}</b></span>` + k.slice(0, 3).map(x => `<span class="${/Bull/.test(x) ? 'up' : 'dn'}">${/Bull/.test(x) ? '▲' : '▼'}${SIG_LABEL[x]}</span>`).join('') : '<span>無訊號</span>'; };
+  $('qRes').innerHTML = `<div class="qlist">${hits.map(s => row(s, `<span>${MKT[s.mkt] || ''}</span><span>${esc(s.ind) || ''}</span>` + tagsMini(s))).join('')}</div>`;
+}
+
+/* ---------- 明細彈窗 ---------- */
+function openSheet(id) {
+  const s = cur.stocks.find(x => x.id === id); if (!s) return;
+  const ks = SIG_KEYS.filter(k => s.sig[k]);
+  const tags = ks.length ? ks.map(k => `<span class="tag ${/Bull/.test(k) ? 'bull' : 'bear'}">${/Bull/.test(k) ? '▲' : '▼'} ${SIG_LABEL[k]}${/^ma/.test(k) ? ' ' + md(s.sig[k].date) : ''}</span>`).join('')
+                         : '<span class="tag na">今日無訊號</span>';
+  const xb = hitCnt(s, 'Bull'), xr = hitCnt(s, 'Bear');
+  const cell = (k, v, c = '') => `<div class="cell"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`;
+  $('sheet').innerHTML = `<div class="grab"></div>
+    <div class="sh"><div class="ttl"><span class="c">${esc(s.id)}</span><span class="nm">${esc(s.name)}</span>
+      <div class="sub">${MKT[s.mkt] || ''}${s.ind ? '｜' + esc(s.ind) : ''}｜資料日期 ${cur.date}</div></div>
+      <button class="x" id="shClose" aria-label="關閉">✕</button></div>
+    <div class="pxl"><span class="p">${f2(s.close)}</span><span class="g ${cls(s.chg)}">${pctTxt(s.chg)}</span></div>
+    <div class="sec">命中訊號（多方 ${xb}／空方 ${xr}）</div><div class="tags" style="margin-bottom:14px">${tags}</div>
+    <div class="sec">均線</div>
+    <div class="grid">${MA_N.map(n => cell('MA' + n, f2(s.ma[n]), s.close > s.ma[n] ? 'up' : 'dn')).join('')}</div>
+    <div class="sec">RSI ／ MACD</div>
+    <div class="grid">${cell('RSI(6)', f2(s.rsi), s.rsi >= 80 ? 'up' : s.rsi <= 20 ? 'dn' : '')}${cell('DIF', f2(s.dif))}${cell('MACD', f2(s.macd))}
+      ${cell('OSC 前2日', f2(s.osc[0]), cls(s.osc[0]))}${cell('OSC 前1日', f2(s.osc[1]), cls(s.osc[1]))}${cell('OSC 今日', f2(s.osc[2]), cls(s.osc[2]))}</div>
+    <div class="sec" style="font-weight:400">收盤價高於均線以紅字、低於以綠字顯示。</div>`;
+  $('mask').classList.add('on'); $('sheet').classList.add('on'); $('sheet').scrollTop = 0;
+  $('shClose').onclick = closeSheet;
+  document.body.style.overflow = 'hidden';
+  if (!history.state || !history.state.sheet) history.pushState({sheet: 1}, '');
+}
+function closeSheet(fromPop) {
+  if (!$('sheet').classList.contains('on')) return;
+  $('mask').classList.remove('on'); $('sheet').classList.remove('on');
+  document.body.style.overflow = '';
+  if (fromPop !== true && history.state && history.state.sheet) history.back();
+}
+$('mask').onclick = closeSheet;
+window.addEventListener('popstate', () => closeSheet(true));
+// 下滑關閉
+(() => { let y0 = null;
+  $('sheet').addEventListener('touchstart', e => { y0 = $('sheet').scrollTop <= 0 ? e.touches[0].clientY : null; }, {passive: true});
+  $('sheet').addEventListener('touchend', e => { if (y0 != null && e.changedTouches[0].clientY - y0 > 90) closeSheet(); y0 = null; }, {passive: true});
+})();
+
+/* ---------- 輸出 ---------- */
+const csvCell = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v;
+function exportCsv(b) {
+  const B = side, sideTxt = B === 'Bull' ? '多方' : '空方';
+  const extraH = {ma: [`MA${b.n}`, '交叉日', '均線斜率'], rsi: ['RSI(6)'], macd: ['OSC 前2日', 'OSC 前1日', 'OSC 今日', 'DIF', 'MACD'], x: ['均線', 'RSI(6)', 'MACD', '訊號']}[b.kind];
+  const extra = s => b.kind === 'ma' ? [f2(s.ma[b.n]), md(s.sig[b.key].date), s.sig[b.key].slope.toFixed(2)]
+                   : b.kind === 'rsi' ? [f2(s.rsi)]
+                   : b.kind === 'macd' ? [f2(s.osc[0]), f2(s.osc[1]), f2(s.osc[2]), f2(s.dif), f2(s.macd)]
+                   : [fam(s, B).ma.join(' '), f2(s.rsi), macdTxt(s, B), hitCnt(s, B)];
+  const head = ['資料日期', '多空', '條件', '代號', '名稱', '市場', '產業', '收盤', '漲跌幅(%)', ...extraH];
+  const rows = b.list.map(s => [cur.date, sideTxt, `${b.badge}｜${b.title}`, s.id, s.name, MKT[s.mkt] || '', s.ind || '', f2(s.close), s.chg.toFixed(2), ...extra(s)]);
+  const csv = '﻿' + [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
+  const name = `技術訊號_${cur.date}_${sideTxt}_${FILE_LABEL[b.key] || b.key}.csv`;
+  const file = new File([csv], name, {type: 'text/csv'});
+  if (navigator.canShare && navigator.canShare({files: [file]})) { navigator.share({files: [file], title: name}).catch(() => {}); return; }
+  const url = URL.createObjectURL(file);
+  const a = Object.assign(document.createElement('a'), {href: url, download: name});
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+async function copyIds(b) {
+  const text = b.list.map(s => s.id).join('\n');
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) { const t = Object.assign(document.createElement('textarea'), {value: text}); t.style.position = 'fixed'; t.style.opacity = '0'; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+}
+function flash(btn, msg) { const o = btn.textContent; btn.textContent = msg; btn.classList.add('done'); setTimeout(() => { btn.textContent = o; btn.classList.remove('done'); }, 1500); }
+
+/* ---------- 事件 ---------- */
+$('main').addEventListener('click', async e => {
+  const sd = e.target.closest('[data-side]');
+  if (sd) { if (side !== sd.dataset.side) { side = sd.dataset.side; open.clear(); renderMain(); } return; }
+  const tg = e.target.closest('[data-toggle]');
+  if (tg) { const k = tg.dataset.toggle; if (!BLK[k].list.length) return; open.has(k) ? open.delete(k) : open.add(k); refreshBlock(k); return; }
+  const mo = e.target.closest('[data-more]');
+  if (mo) { const k = mo.dataset.more; shown[k] = (shown[k] || PAGE) + PAGE; refreshBlock(k); return; }
+  const ex = e.target.closest('[data-exp]');
+  if (ex) { const b = BLK[ex.dataset.k]; if (ex.dataset.exp === 'csv') { exportCsv(b); flash(ex, '✓ 已輸出'); } else { await copyIds(b); flash(ex, `✓ 已複製 ${b.list.length} 檔`); } return; }
+  const r = e.target.closest('.row[data-id]');
+  if (r) openSheet(r.dataset.id);
+});
+$('tabs').addEventListener('click', e => {
+  const t = e.target.closest('[data-tab]'); if (!t || t.dataset.tab === tab) return;
+  tab = t.dataset.tab; open.clear();
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
+  renderMain(); window.scrollTo({top: 0});
+});
+const refilter = () => { compute(); Object.keys(shown).forEach(k => delete shown[k]); renderKpis(); renderMain(); };
+$('mkt').addEventListener('change', refilter);
+$('ind').addEventListener('change', refilter);
+$('date').addEventListener('change', e => show(e.target.value));
+window.addEventListener('resize', setSegTop);
+
+/* ---------- 啟動 ---------- */
+function fillIndustries() {
+  const keep = $('ind').value;
+  const inds = [...new Set(cur.stocks.map(s => s.ind).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+  $('ind').innerHTML = '<option value="">全部產業</option>' + inds.map(i => `<option${i === keep ? ' selected' : ''}>${esc(i)}</option>`).join('');
+}
+async function show(date) {
+  $('err').textContent = '';
+  try {
+    if (!cache[date]) cache[date] = await load(date === latestDate ? 'latest.json' : `history/${date}.json`);
+    cur = cache[date];
+    const st = cur.stats || {};
+    const gt = cur.generated_at ? new Date(cur.generated_at).toLocaleString('zh-TW', {hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : '—';
+    $('meta').textContent = `資料日期 ${cur.date}｜有效 ${st.scanned ?? cur.stocks.length} 檔｜更新 ${gt}`;
+    fillIndustries(); refilter();
+  } catch (e) { $('err').textContent = `無法載入 ${date} 的資料：${e.message}`; }
+}
+async function init() {
+  try {
+    let dates = [];
+    try { const idx = await load('index.json'); latestDate = idx.latest; dates = idx.dates || []; }
+    catch (e) { const lt = await load('latest.json'); latestDate = lt.date; cache[lt.date] = lt; dates = [{date: lt.date, count: lt.stocks.length}]; }
+    if (!latestDate) throw new Error('尚無資料');
+    $('date').innerHTML = dates.map(d => `<option value="${d.date}">${d.date}</option>`).join('');
+    const p = new URLSearchParams(location.search);
+    if (p.get('q')) { qText = p.get('q'); tab = 'q'; document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x.dataset.tab === 'q')); }
+    await show(latestDate);
+  } catch (e) {
+    $('meta').textContent = '';
+    $('err').textContent = '尚無掃描資料，請稍後再試。（' + e.message + '）';
+  }
+}
+setSegTop();
+init();
+})();
+</script>
+</body>
+</html>
