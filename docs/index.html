@@ -192,7 +192,7 @@ footer{margin-top:26px;border-top:2px solid var(--line);padding-top:16px}
     </div>
     <label class="chk"><input type="checkbox" id="exx"> 排除除息影響訊號</label>
     <label class="chk"><input type="checkbox" id="newOnly"> 只看今日新增訊號</label>
-    <label class="chk" title="多方區塊：上週週線收盤站上上週週線 10MA；空方區塊：上週週線收盤跌破上週週線 10MA"><input type="checkbox" id="wkF" checked> 週線濾網（上週週收盤 vs 週MA10）</label>
+    <label class="chk" title="多方區塊：上週週線 10MA 上揚（高於前一週）；空方區塊：上週週線收盤跌破上週週線 10MA"><input type="checkbox" id="wkF" checked> 週線濾網（多：週MA10上揚／空：週收跌破週MA10）</label>
   </div>
   <div class="legend">
     <span>標記：</span>
@@ -239,7 +239,7 @@ footer{margin-top:26px;border-top:2px solid var(--line);padding-top:16px}
     「黃金／死亡交叉」判定為前一日收盤 ≤／≥ 均線、當日收盤 ＞／＜ 均線，發生於最近 3 個交易日內；「上揚／下彎」為最新一日均線值高於／低於前一日。
     價格採 Yahoo 未還原除權息之收盤價（僅含股票分割調整）；台北時間 14:30 前不採用當日 K 棒。停牌、資料未達 110 個交易日或最新資料非當日之個股不列入。
     「新／連 N」以同一套資料逐日回推訊號連續出現的交易日數；「除息」為近 5 個交易日內依 Yahoo 配息與還原因子偵測，「⚠除息」表示改用還原權息價計算時該訊號不成立。20 日均量以 Yahoo 成交量換算張數。
-    「週線濾網」開啟時，多方區塊另需上週週線收盤（該週最後交易日收盤）站上上週週線 10MA（近 10 週週收盤平均），空方區塊另需跌破；週線依週一至週日分組。
+    「週線濾網」開啟時，多方區塊另需上週週線 10MA（近 10 週週收盤平均）高於前一週（上揚），空方區塊另需上週週線收盤（該週最後交易日收盤）跌破上週週線 10MA；週線依週一至週日分組。
     「歷史回測」統計近兩年每個訊號首日出現後持有 5／10／20 個交易日的表現（以還原權息價計算），依事件當日的 20 日均量分組、隨上方均量篩選切換；多方看上漲機率、空方看下跌機率，金色表示比同期全體個股基準高 3 個百分點以上。回測不含交易成本，過去表現不代表未來。
   </div>
   <div class="warn">

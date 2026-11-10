@@ -178,7 +178,8 @@ function openSheet(id) {
     <div class="sec">命中訊號（多方 ${xb}／空方 ${xr}）</div><div class="tags" style="margin-bottom:14px">${tags}</div>
     <div class="grid" style="margin-bottom:14px">${cell('20 日均量', s.v20 == null ? '—' : SC.int(s.v20) + ' 張')}${cell('今日成交量', s.vol == null ? '—' : SC.int(s.vol / 1000) + ' 張')}</div>
     <div class="sec">上週週線${s.wk ? `（${md(s.wk.d)} 當週）` : ''}</div>
-    <div class="grid" style="margin-bottom:14px">${cell('週收盤', s.wk ? f2(s.wk.c) : '—', s.wk ? (s.wk.up ? 'up' : s.wk.dn ? 'dn' : '') : '')}${cell('週 MA10', s.wk ? f2(s.wk.ma) : '—')}${cell('狀態', s.wk ? (s.wk.up ? '站上' : s.wk.dn ? '跌破' : '持平') : '—', s.wk ? (s.wk.up ? 'up' : s.wk.dn ? 'dn' : '') : '')}</div>
+    <div class="grid" style="margin-bottom:14px">${cell('週收盤', s.wk ? f2(s.wk.c) : '—', s.wk ? (s.wk.dn ? 'dn' : 'up') : '')}${cell('週 MA10', s.wk ? f2(s.wk.ma) + SC.wkArrow(s) : '—', s.wk && s.wk.mp != null ? (s.wk.ma > s.wk.mp ? 'up' : 'dn') : '')}${cell('前一週 MA10', s.wk && s.wk.mp != null ? f2(s.wk.mp) : '—')}
+      ${cell('多方條件', s.wk ? (SC.wkRise(s) ? '✓ MA10上揚' : '✗ MA10未上揚') : '—', s.wk ? (SC.wkRise(s) ? 'up' : '') : '')}${cell('空方條件', s.wk ? (s.wk.dn ? '✓ 收盤跌破' : '✗ 未跌破') : '—', s.wk ? (s.wk.dn ? 'dn' : '') : '')}</div>
     <div class="sec">均線</div>
     <div class="grid">${MA_N.map(n => cell('MA' + n, f2(s.ma[n]), s.close > s.ma[n] ? 'up' : 'dn')).join('')}</div>
     <div class="sec">RSI ／ MACD</div>

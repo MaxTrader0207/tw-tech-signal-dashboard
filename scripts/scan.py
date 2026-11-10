@@ -347,8 +347,8 @@ class Backtest:
     """
 
     def __init__(self):
-        self.ev = {}                              # key -> [(v20, {h: ret}, 上週週線站上, 上週週線跌破)]
-        self.base = []                            # [(v20, {h: ret}, 上週週線站上, 上週週線跌破)]
+        self.ev = {}                              # key -> [(v20, {h: ret}, 上週週MA10上揚, 上週週收盤跌破週MA10)]
+        self.base = []                            # [(v20, {h: ret}, 上週週MA10上揚, 上週週收盤跌破週MA10)]
         self.d0, self.d1 = None, None
 
     def add(self, rows, flags):
@@ -369,7 +369,7 @@ class Backtest:
             v20 = (csum[i + 1] - csum[lo]) / (i + 1 - lo) / 1000
             rets = {h: px[i + h] / px[i] - 1 for h in HORIZONS if i + h < L}
             ws = last_week_state(wk_of_row, weeks, i)
-            rec = (v20, rets, bool(ws and ws[0] > ws[1]), bool(ws and ws[0] < ws[1]))
+            rec = (v20, rets, bool(ws and ws[1] > ws[3]), bool(ws and ws[0] < ws[1]))
             self.base.append(rec)
             events = list(fi - fp)
             for side in ("Bull", "Bear"):
@@ -385,7 +385,7 @@ class Backtest:
 
     @staticmethod
     def _stats(recs, t, h, bull=None, weekly=False):
-        # weekly=True：多方只取上週週線站上週 MA10 的事件，空方只取跌破的事件
+        # weekly=True：多方只取上週週 MA10 上揚的事件，空方只取上週週收盤跌破週 MA10 的事件
         if weekly:
             recs = [r for r in recs if (r[2] if bull else r[3])]
         xs = sorted(r[1][h] for r in recs if r[0] >= t and h in r[1])
@@ -432,8 +432,9 @@ def build_payload(stocks, prices, now):
         bt.add(srows, flags)
         wk_of_row, weeks = weekly_series(srows)
         ws = last_week_state(wk_of_row, weeks, len(srows) - 1)
-        if ws:                                  # 上週週收盤 vs 上週週 MA10
-            item["wk"] = {"d": ws[2], "c": r(ws[0], 4), "ma": r(ws[1], 4), "up": ws[0] > ws[1], "dn": ws[0] < ws[1]}
+        if ws:   # 上週週收盤、上週週 MA10、前一週週 MA10；多方條件＝MA10 上揚，空方條件＝收盤跌破 MA10
+            item["wk"] = {"d": ws[2], "c": r(ws[0], 4), "ma": r(ws[1], 4), "mp": r(ws[3], 4),
+                          "rise": ws[1] > ws[3], "dn": ws[0] < ws[1]}
         if a["sig"]:
             item["st"] = streaks(flags, list(a["sig"]))
         ex = ex_dividend(rows)
@@ -455,7 +456,7 @@ def build_payload(stocks, prices, now):
     fresh.sort(key=lambda x: x["id"])
     return {
         "date": max_date,
-        "ver": 4,                       # 2：v20／st／ex／exHit；3：回測 bt；4：上週週線 wk 與回測 byW
+        "ver": 5,                       # 2：v20／st／ex／exHit；3：回測 bt；4：週線 wk 與回測 byW；5：多方週線條件改為週MA10上揚
         "generated_at": now.isoformat(timespec="seconds"),
         "source": "Yahoo Finance 日線與配息（yfinance）；股票清單：臺灣證券交易所 ISIN 公告／OpenAPI",
         "stats": {
