@@ -1,0 +1,3 @@
+# 掃描資料存在 data 分支，由 Actions 部署時組合；本機執行 scan.py 產生的資料不提交
+docs/data/
+__pycache__/
