@@ -270,14 +270,57 @@ def fetch_prices(symbols):
     return got
 
 
-def drop_intraday(rows, now=None):
-    """排除未收盤的 K 棒：日期晚於今天者一律排除；今天的 K 棒在 14:30 前排除。
+def last_trading_date():
+    """證交所每日市場成交資訊（OpenAPI FMTQIK）中的最近交易日；取不到回傳 None。"""
+    try:
+        r = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/FMTQIK", headers=UA, timeout=30)
+        r.raise_for_status()
+        ds = []
+        for row in r.json():
+            d = str(row.get("Date", "")).strip()
+            if re.fullmatch(r"\d{7}", d):                      # 民國 yyyMMdd
+                ds.append(f"{int(d[:3]) + 1911}-{d[3:5]}-{d[5:7]}")
+        return max(ds) if ds else None
+    except Exception as e:  # noqa: BLE001
+        log(f"[日期] 證交所最近交易日取得失敗：{e}")
+        return None
 
-    以呼叫當下的台北時間判斷（掃描可能跨過午夜，不能只用開始時間）。
+
+def prev_weekday(d):
+    d -= dt.timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= dt.timedelta(days=1)
+    return d
+
+
+PRE_OPEN = dt.time(9, 0)
+LTD = {"v": None, "done": False}   # 證交所最近交易日（只在需要時查一次）
+
+
+def drop_intraday(rows, now=None):
+    """處理未收盤或標錯日期的最新 K 棒（以呼叫當下的台北時間判斷，掃描可能跨過午夜）。
+
+    - 日期晚於今天：一律排除。
+    - 開盤前（09:00 前）或週末：今天不可能有真正的 K 棒。Yahoo 午夜後會把前一個交易日的
+      K 棒標成今天，若前一個交易日的 K 棒不存在就改回該日期，否則排除。
+    - 交易日 09:00～14:30：今天的 K 棒尚未收盤，排除。
     """
     now = dt.datetime.now(TPE)
     today = now.date().isoformat()
-    while rows and (rows[-1]["date"] > today or (rows[-1]["date"] == today and now.time() < INTRADAY_CUTOFF)):
+    while rows and rows[-1]["date"] > today:
+        rows.pop()
+    if not rows or rows[-1]["date"] != today:
+        return rows
+    if now.time() < PRE_OPEN or now.weekday() >= 5:
+        if not LTD["done"]:
+            LTD["v"], LTD["done"] = last_trading_date(), True
+            log(f"[日期] 開盤前／週末執行，證交所最近交易日：{LTD['v'] or '未知（改用前一個工作日）'}")
+        prev = LTD["v"] if LTD["v"] and LTD["v"] < today else prev_weekday(now.date()).isoformat()
+        last = rows.pop()
+        if not rows or rows[-1]["date"] < prev:
+            rows.append({**last, "date": prev})
+        return rows
+    if now.time() < INTRADAY_CUTOFF:
         rows.pop()
     return rows
 
