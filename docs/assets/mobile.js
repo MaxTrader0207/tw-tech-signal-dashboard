@@ -94,7 +94,7 @@ function renderKpis() {
 
 const DESC = {
   x: '同時命中兩類以上指標（均線、RSI、MACD）的個股，每檔只列在命中最多的組合。',
-  ma: '日線收盤價與 MA30／60／100 交叉（近 3 個交易日內），並搭配均線方向。',
+  ma: '日線收盤價與 MA30／60／100 交叉（多方近 2 個、空方近 3 個交易日內），並搭配均線方向。',
   rsi: 'RSI 參數 6，日線收盤。',
   macd: 'MACD(12,26,9)，柱狀體 OSC＝DIF−MACD。',
 };
@@ -279,7 +279,7 @@ async function show(date) {
     $('meta').textContent = `資料日期 ${cur.date}｜有效 ${st.scanned ?? cur.stocks.length} 檔｜更新 ${gt}` +
       (ver < 2 ? '｜⚠ 舊格式資料，均量／除息／新增標記不適用' : ver < 3 ? '｜此日期尚無歷史回測' : '') +
       (ver < 4 ? '｜⚠ 尚無週線資訊，週線濾網不適用' : ver < 5 ? '｜⚠ 舊版週線條件（多方：週收站上週MA10）'
-        : ver < 6 ? '｜⚠ 舊版週線條件（多方：週MA10上揚）' : ver < 7 ? '｜⚠ 舊版週線條件（多方：週RSI6>50）' : '');
+        : ver < 6 ? '｜⚠ 舊版週線條件（多方：週MA10上揚）' : ver < 7 ? '｜⚠ 舊版週線條件（多方：週RSI6>50）' : ver < 8 ? '｜⚠ 多方均線交叉仍為近3日（舊資料）' : '');
     fillIndustries(); refilter();
   } catch (e) { $('err').textContent = `無法載入 ${date} 的資料：${e.message}`; }
 }

@@ -7,6 +7,8 @@ EMA  ：α = 2/(n+1)，以首筆值為起始
 """
 
 MA_N = (30, 60, 100)
+CROSS_WIN_BULL = 2   # 多方：收盤黃金交叉均線需發生於近 2 個交易日內
+CROSS_WIN_BEAR = 3   # 空方：收盤死亡交叉均線需發生於近 3 個交易日內
 MIN_BARS = 110
 
 
@@ -94,12 +96,12 @@ def signal_series(rows):
         s = set()
         for n, m in mas.items():
             gx = dx = False
-            for j in range(i, i - 3, -1):
+            for j in range(i, i - max(CROSS_WIN_BULL, CROSS_WIN_BEAR), -1):
                 if m[j - 1] is None:
                     continue
-                if c[j - 1] <= m[j - 1] and c[j] > m[j]:
+                if j > i - CROSS_WIN_BULL and c[j - 1] <= m[j - 1] and c[j] > m[j]:
                     gx = True
-                if c[j - 1] >= m[j - 1] and c[j] < m[j]:
+                if j > i - CROSS_WIN_BEAR and c[j - 1] >= m[j - 1] and c[j] < m[j]:
                     dx = True
             slope = m[i] - m[i - 1]
             if gx and slope > 0:
@@ -210,12 +212,12 @@ def analyze(rows):
         m = sma(c, n)
         res["ma"][str(n)] = m[last]
         gx = dx = None
-        for i in range(last, last - 3, -1):  # 最近 3 個交易日
+        for i in range(last, last - max(CROSS_WIN_BULL, CROSS_WIN_BEAR), -1):  # 多方近 2 日、空方近 3 日
             if m[i - 1] is None:
                 continue
-            if gx is None and c[i - 1] <= m[i - 1] and c[i] > m[i]:
+            if gx is None and i > last - CROSS_WIN_BULL and c[i - 1] <= m[i - 1] and c[i] > m[i]:
                 gx = rows[i]["date"]
-            if dx is None and c[i - 1] >= m[i - 1] and c[i] < m[i]:
+            if dx is None and i > last - CROSS_WIN_BEAR and c[i - 1] >= m[i - 1] and c[i] < m[i]:
                 dx = rows[i]["date"]
         slope = m[last] - m[last - 1]
         if gx and slope > 0:
