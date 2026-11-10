@@ -294,7 +294,7 @@ class Backtest:
 
     def __init__(self):
         self.ev = {t: {} for t in V_THRESH}
-        self.base = {t: {h: [0, 0.0, 0] for h in HORIZONS} for t in V_THRESH}
+        self.base = {t: {h: [0, 0.0, 0, 0] for h in HORIZONS} for t in V_THRESH}   # n、報酬和、上漲數、下跌數
         self.d0, self.d1 = None, None
 
     def add(self, rows, flags):
@@ -322,7 +322,7 @@ class Backtest:
             for t in ths:
                 for h, rt in rets.items():
                     b = self.base[t][h]
-                    b[0] += 1; b[1] += rt; b[2] += rt > 0
+                    b[0] += 1; b[1] += rt; b[2] += rt > 0; b[3] += rt < 0
                 for k in events:
                     bull = "Bull" in k
                     hs = self.ev[t].setdefault(k, {h: [0, 0.0, 0] for h in HORIZONS})
@@ -335,8 +335,11 @@ class Backtest:
                 self.d1 = d if self.d1 is None or d > self.d1 else self.d1
 
     def result(self):
-        def pack(n, s, w):
-            return [n, round(s / n * 100, 2), round(w / n * 100, 1)] if n else [0, None, None]
+        def pack(n, s, w, dn=None):
+            if not n:
+                return [0, None, None] if dn is None else [0, None, None, None]
+            out = [n, round(s / n * 100, 2), round(w / n * 100, 1)]
+            return out if dn is None else out + [round(dn / n * 100, 1)]
         return {
             "from": self.d0, "to": self.d1, "h": list(HORIZONS),
             "base": {str(t): {str(h): pack(*v) for h, v in hs.items()} for t, hs in self.base.items()},

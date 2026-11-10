@@ -201,7 +201,7 @@ SC.bt = (cur, key, v20) => {
   const rows = bt.h.map(h => {
     const v = d && d[String(h)] || [0, null, null];
     const b = base[String(h)] || [0, null, null];
-    const baseWin = b[2] == null ? null : (bull ? b[2] : 100 - b[2]);
+    const baseWin = b[2] == null ? null : (bull ? b[2] : (b[3] != null ? b[3] : 100 - b[2]));   // 空方基準＝下跌率（不含平盤）
     return {h, n: v[0], avg: v[1], win: v[2], baseWin, baseAvg: b[1]};
   });
   return {rows, n: rows[0].n, bull, from: bt.from, to: bt.to};
