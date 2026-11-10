@@ -270,10 +270,26 @@ def fetch_prices(symbols):
     return got
 
 
-def drop_intraday(rows, now):
-    if rows and rows[-1]["date"] == now.date().isoformat() and now.time() < INTRADAY_CUTOFF:
+def drop_intraday(rows, now=None):
+    """排除未收盤的 K 棒：日期晚於今天者一律排除；今天的 K 棒在 14:30 前排除。
+
+    以呼叫當下的台北時間判斷（掃描可能跨過午夜，不能只用開始時間）。
+    """
+    now = dt.datetime.now(TPE)
+    today = now.date().isoformat()
+    while rows and (rows[-1]["date"] > today or (rows[-1]["date"] == today and now.time() < INTRADAY_CUTOFF)):
         rows.pop()
     return rows
+
+
+def target_date(prices):
+    """資料日期＝多數個股的最新交易日（避免少數個股的異常 K 棒決定整體日期）。"""
+    from collections import Counter
+    c = Counter(rows[-1]["date"] for rows in prices.values() if rows)
+    if not c:
+        return ""
+    top = max(c.values())
+    return max(d for d, n in c.items() if n >= top * 0.5)   # 與最多者相近時取較新日期
 
 
 # ---------------------------------------------------------------- 3. 計算與輸出
@@ -414,12 +430,15 @@ class Backtest:
 def build_payload(stocks, prices, now):
     results, no_data, short = [], [], []
     bt = Backtest()
+    cleaned = {k: drop_intraday(list(v)) for k, v in prices.items() if v}
+    tdate = target_date(cleaned)
+    log(f"[日期] 資料日期 {tdate}")
     for s in stocks:
-        rows = prices.get(ysym(s))
+        rows = cleaned.get(ysym(s))
         if not rows:
             no_data.append(s["id"])
             continue
-        rows = drop_intraday(list(rows), now)
+        rows = [x for x in rows if x["date"] <= tdate]       # 比資料日期更新的 K 棒截掉
         a = analyze(rows)
         if not a:
             short.append(s["id"])
