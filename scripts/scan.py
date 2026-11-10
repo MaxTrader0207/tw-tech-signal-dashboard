@@ -36,7 +36,7 @@ EX_WINDOW = 5                      # 近 N 個交易日內有除息者標示
 STREAK_MAX = 10                    # 在榜天數最多回推 N 日（≥N 顯示 N+）
 VOL_AVG_N = 20                     # 均量天數
 PERIOD = "2y"                      # Yahoo 下載區間（2 年：指標更收斂、回測樣本更多）
-HORIZONS = (5, 10, 20)             # 回測持有天數
+HORIZONS = (3, 5, 10, 20)          # 回測持有天數（多空相同）
 V_THRESH = (0, 100, 500, 1000, 5000)  # 回測依事件當日 20 日均量（張）分組，對應前端均量門檻
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
@@ -542,9 +542,14 @@ def write_outputs(payload):
     cur = DATA / "latest.json"
     if cur.exists():
         try:
-            old = json.loads(cur.read_text(encoding="utf-8")).get("date", "")
+            oldp = json.loads(cur.read_text(encoding="utf-8"))
+            old = oldp.get("date", "")
             if old and date < old:
-                log(f"[保護] 新資料日期 {date} 早於現有 {old}，疑似 Yahoo 資料暫時缺漏，保留現有資料不覆蓋")
+                log(f"[保護] 新資料日期 {date} 早於現有 {old}，疑似 Yahoo 資料暫時缺漏，保留現有個股資料不覆蓋")
+                if payload.get("bt"):                 # 回測統計與最新一天無關，仍更新到現有資料
+                    oldp["bt"] = payload["bt"]
+                    dump(cur, oldp)
+                    log("[保護] 已更新現有資料的歷史回測統計")
                 return False
         except Exception:  # noqa: BLE001
             pass
