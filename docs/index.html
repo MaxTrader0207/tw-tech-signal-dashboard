@@ -47,7 +47,8 @@ section.ind>h2{margin:0 0 4px;font-size:1.6rem;font-weight:900}
 section.ind>.def{color:var(--muted);font-size:.95rem;margin-bottom:14px}
 .sides{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media (max-width:980px){.sides{grid-template-columns:1fr}}
-.side{border-radius:12px;padding:14px;border:1px solid var(--line)}
+.side{border-radius:12px;padding:14px;border:1px solid var(--line);min-width:0}
+.mabox,.cond{min-width:0}
 .side.bull{background:var(--bull-bg);border-color:rgba(255,77,94,.35)}
 .side.bear{background:var(--bear-bg);border-color:rgba(31,209,139,.35)}
 .side>h3{margin:0 0 10px;font-size:1.4rem;font-weight:900}
@@ -75,6 +76,8 @@ td.txt{text-align:left}
 .mabox.ma30{--ma:#f5b83d;--ma-bg:rgba(245,184,61,.08)}
 .mabox.ma60{--ma:#4da3ff;--ma-bg:rgba(77,163,255,.08)}
 .mabox.ma100{--ma:#b07cff;--ma-bg:rgba(176,124,255,.09)}
+.mabox.oscx{--ma:#22c7d6;--ma-bg:rgba(34,199,214,.08)}
+.mabox.osce{--ma:#ff8a3d;--ma-bg:rgba(255,138,61,.08)}
 .mabox h4{margin:0 0 6px;font-size:1.1rem;display:flex;align-items:center;gap:10px}
 .mabox h4 .t{flex:1}
 .mabox h4 .badge{background:var(--ma);color:#111;border-radius:6px;padding:0 9px;font-family:"JetBrains Mono",monospace;font-weight:700;font-size:.95rem}
@@ -208,8 +211,9 @@ function table(list, cols) {
 }
 const cond = (title, list, cols) =>
   `<div class="cond"><h4><span>${title}</span><span class="n">${list.length}</span></h4>${table(list, cols)}</div>`;
-const maBox = (n, title, list, cols) =>
-  `<div class="mabox ma${n}"><h4><span class="badge">MA${n}</span><span class="t">${title}</span><span class="n">${list.length}</span></h4>${table(list, cols)}</div>`;
+const box = (cls, badge, title, list, cols) =>
+  `<div class="mabox ${cls}"><h4><span class="badge">${badge}</span><span class="t">${title}</span><span class="n">${list.length}</span></h4>${table(list, cols)}</div>`;
+const maBox = (n, title, list, cols) => box(`ma${n}`, `MA${n}`, title, list, cols);
 
 function render(results) {
   const by = k => results.filter(s => s.sig[k]).sort((a, b) => b.chg - a.chg);
@@ -267,14 +271,15 @@ function render(results) {
   <section class="ind">
     <h2>📊 MACD 指標</h2>
     <div class="def">MACD(12,26,9)，柱狀體 OSC＝DIF−MACD，日線</div>
+    <div class="malegend"><span><i style="background:#22c7d6"></i>零軸交叉（轉折）</span><span><i style="background:#ff8a3d"></i>柱狀體延續（動能）</span></div>
     <div class="sides">
       <div class="side bull"><h3>▲ 多方板塊</h3>
-        ${cond('1. 柱狀體黃金交叉 0（由 ≤0 轉 >0）', lists.macdBullCross, oscCols)}
-        ${cond('2. 柱狀體 > 0，且連續 2 日放大', lists.macdBullExp, oscCols)}
+        ${box('oscx', '交叉', '柱狀體黃金交叉 0（由 ≤0 轉 >0）', lists.macdBullCross, oscCols)}
+        ${box('osce', '動能', '柱狀體 > 0，且連續 2 日放大', lists.macdBullExp, oscCols)}
       </div>
       <div class="side bear"><h3>▼ 空方板塊</h3>
-        ${cond('1. 柱狀體死亡交叉 0（由 ≥0 轉 <0）', lists.macdBearCross, oscCols)}
-        ${cond('2. 柱狀體 < 0，且連續 2 日減少', lists.macdBearExp, oscCols)}
+        ${box('oscx', '交叉', '柱狀體死亡交叉 0（由 ≥0 轉 <0）', lists.macdBearCross, oscCols)}
+        ${box('osce', '動能', '柱狀體 < 0，且連續 2 日減少', lists.macdBearExp, oscCols)}
       </div>
     </div>
   </section>`;
