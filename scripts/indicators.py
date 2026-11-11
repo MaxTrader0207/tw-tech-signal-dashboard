@@ -35,6 +35,12 @@ def ma_x(m10, m30, i):
     return None
 
 
+def macd_trend(c, m10, msig, i):
+    """第 i 日是否 MACD 多頭：MACD 慢線（DIF 的 EMA9）> 0、收盤 > MA10，且 MA10 較前一日上揚。"""
+    return (i >= 1 and m10[i] is not None and m10[i - 1] is not None and msig[i] is not None
+            and msig[i] > 0 and c[i] > m10[i] and m10[i] > m10[i - 1])
+
+
 def rsi_mom(r6, i, wr6):
     """第 i 日是否 RSI 動能：上週週 RSI6（wr6）> 50，日線 RSI6 > 70 且較前一日上揚。"""
     return (i >= 1 and r6[i] is not None and r6[i - 1] is not None and wr6 is not None
@@ -131,11 +137,13 @@ def signal_series(rows):
     l = [float(r["low"]) for r in rows]
     mas = {n: sma(c, n) for n in MA_N}
     r6 = rsi(c, 6)
-    _, _, osc = macd(h, l, c)
+    _, msig, osc = macd(h, l, c)
     wk_of_row, weeks = weekly_series(rows)
     m10x, m30x = sma(c, MAX_N[0]), sma(c, MAX_N[1])
     for i in range(MIN_BARS - 1, L):
         s = set()
+        if macd_trend(c, m10x, msig, i):
+            s.add("macdBullTrend")
         if ma_x(m10x, m30x, i) is not None and wk_up(wk_of_row, weeks, i):
             s.add("maBullX")
         if box_break(c, h, l, i):
@@ -339,4 +347,6 @@ def analyze(rows):
         res["sig"]["macdBearCross"] = True
     if o0 < 0 and o1 < 0 and o0 < o1 and o1 < o2:
         res["sig"]["macdBearExp"] = True
+    if macd_trend(c, m10x, sig, last):
+        res["sig"]["macdBullTrend"] = {"m10": m10x[last], "slope": m10x[last] - m10x[last - 1]}
     return res

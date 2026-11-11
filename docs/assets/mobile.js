@@ -51,13 +51,14 @@ function blocksFor(t, B) {
   if (t === 'macd') return [
     {key: `macd${B}Cross`, cls: 'oscx', badge: '交叉', kind: 'macd', list: lists[`macd${B}Cross`], title: bull ? '柱狀體由 ≤0 轉 >0' : '柱狀體由 ≥0 轉 <0'},
     {key: `macd${B}Exp`, cls: 'osce', badge: '動能', kind: 'macd', list: lists[`macd${B}Exp`], title: bull ? '柱狀體 >0 且連 2 日放大' : '柱狀體 <0 且連 2 日減少'},
-  ];
+  ].concat(bull ? [{key: 'macdBullTrend', cls: 'osct', badge: '多頭', kind: 'mt', list: lists.macdBullTrend, title: SC.MT_TITLE}] : []);
   return [];
 }
 const sideCount = (t, B) => SC.uniq(blocksFor(t, B).map(b => b.list));
 
 /* ---------- 卡片 ---------- */
 function metrics(b, s, B) {
+  if (b.kind === 'mt') return `<span>慢線 <b class="up">${f2(s.macd)}</b></span><span>DIF <b>${f2(s.dif)}</b></span><span>MA10 <b>${f2(s.sig.macdBullTrend.m10)}</b></span><span>斜率 <b class="up">+${s.sig.macdBullTrend.slope.toFixed(2)}</b></span>`;
   if (b.kind === 'mx') {
     const g = s.sig.maBullX;
     return `<span>MA10 <b>${f2(g.m10)}</b></span><span>MA30 <b>${f2(g.m30)}</b></span><span>交叉 <b>${md(g.date)}</b></span><span>週漲 <b class="up">+${((g.wc / g.wp - 1) * 100).toFixed(2)}%</b></span>`;
@@ -226,8 +227,9 @@ window.addEventListener('popstate', () => closeSheet(true));
 /* ---------- 輸出 ---------- */
 function exportCsv(b) {
   const B = side, sideTxt = B === 'Bull' ? '多方' : '空方';
-  const extraH = {mx: ['MA10', 'MA30', '交叉日', 'MA30斜率', '上週週漲幅(%)'], mom: ['RSI(6)', '前日RSI(6)', '上週週RSI(6)'], box: ['區間高', '區間低', '區間幅度(%)', '突破幅度(%)'], ma: [`MA${b.n}`, '交叉日', '均線斜率'], rsi: ['RSI(6)'], macd: ['OSC 前2日', 'OSC 前1日', 'OSC 今日', 'DIF', 'MACD'], x: ['均線', 'RSI(6)', 'MACD', '訊號']}[b.kind];
-  const extra = s => b.kind === 'mx' ? [f2(s.sig.maBullX.m10), f2(s.sig.maBullX.m30), md(s.sig.maBullX.date), s.sig.maBullX.slope.toFixed(2), ((s.sig.maBullX.wc / s.sig.maBullX.wp - 1) * 100).toFixed(2)]
+  const extraH = {mt: ['MACD慢線', 'DIF', 'MA10', 'MA10斜率'], mx: ['MA10', 'MA30', '交叉日', 'MA30斜率', '上週週漲幅(%)'], mom: ['RSI(6)', '前日RSI(6)', '上週週RSI(6)'], box: ['區間高', '區間低', '區間幅度(%)', '突破幅度(%)'], ma: [`MA${b.n}`, '交叉日', '均線斜率'], rsi: ['RSI(6)'], macd: ['OSC 前2日', 'OSC 前1日', 'OSC 今日', 'DIF', 'MACD'], x: ['均線', 'RSI(6)', 'MACD', '訊號']}[b.kind];
+  const extra = s => b.kind === 'mt' ? [f2(s.macd), f2(s.dif), f2(s.sig.macdBullTrend.m10), s.sig.macdBullTrend.slope.toFixed(2)]
+    : b.kind === 'mx' ? [f2(s.sig.maBullX.m10), f2(s.sig.maBullX.m30), md(s.sig.maBullX.date), s.sig.maBullX.slope.toFixed(2), ((s.sig.maBullX.wc / s.sig.maBullX.wp - 1) * 100).toFixed(2)]
     : b.kind === 'mom' ? [f2(s.rsi), f2(s.sig.rsiBullMom.rp), f2(s.sig.rsiBullMom.wr)]
     : b.kind === 'box' ? [f2(s.sig.boxBull.hi), f2(s.sig.boxBull.lo), s.sig.boxBull.rng.toFixed(1), s.sig.boxBull.brk.toFixed(2)]
     : b.kind === 'ma' ? [f2(s.ma[b.n]), md(s.sig[b.key].date), s.sig[b.key].slope.toFixed(2)]
