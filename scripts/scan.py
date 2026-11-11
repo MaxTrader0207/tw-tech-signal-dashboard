@@ -718,8 +718,8 @@ def build_payload(stocks, prices, now, members=None):
     # ETF 標的池：Yahoo 偶有整段缺漏（例如 ETF 缺某日 K 棒），以多數個股都有的交易日為準，用證交所資料補上
     cnt = {}
     for v in cleaned.values():
-        for r in v[-ETF_PATCH_DAYS - 5:]:
-            cnt[r["date"]] = cnt.get(r["date"], 0) + 1
+        for x in v[-ETF_PATCH_DAYS - 5:]:
+            cnt[x["date"]] = cnt.get(x["date"], 0) + 1
     ref = sorted(d for d, n in cnt.items() if n >= len(cleaned) * 0.5)
     for s in stocks:
         k = ysym(s)
