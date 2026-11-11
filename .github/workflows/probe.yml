@@ -1,0 +1,26 @@
+name: probe
+on: workflow_dispatch
+jobs:
+  p:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
+          for u in \
+            "https://www.moneydj.com/ETF/X/Basic/Basic0007.xdjhtm?etfid=0050.TW" \
+            "https://www.moneydj.com/ETF/X/Basic/Basic0007.xdjhtm?etfid=0051.TW" \
+            "https://www.yuantaetfs.com/api/StkWeights?date=&fundid=1066" \
+            "https://www.yuantaetfs.com/tradeInfo/pcf/0050" \
+            "https://openapi.twse.com.tw/v1/opendata/t187ap03_L" \
+            "https://www.taiwanindex.com.tw/indexes/t00" ; do
+            echo "=== $u"; curl -sSL -m 30 -A "$UA" -o out.bin -w "HTTP %{http_code} %{size_download}B %{content_type}\n" "$u" || true
+            python3 - <<'PY'
+          import re
+          b=open('out.bin','rb').read(); 
+          for enc in ('utf-8','big5','cp950'):
+              try: t=b.decode(enc); break
+              except Exception: t=b.decode('utf-8','ignore')
+          codes=re.findall(r'\b(\d{4})\.TW\b|>(\d{4})<|"(\d{4})"',t)
+          print('codes-like:',len(codes)); i=t.find('2330'); print(repr(t[max(0,i-300):i+300]) if i>=0 else 'no 2330'); 
+          PY
+          done
