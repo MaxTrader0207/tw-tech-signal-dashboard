@@ -390,6 +390,54 @@ PRE_OPEN = dt.time(9, 0)
 LTD = {"v": None, "done": False}   # 證交所最近交易日（只在需要時查一次）
 
 
+ETF_PATCH_DAYS = 40                # ETF 標的池：近 N 個交易日內 Yahoo 缺漏的日 K 以證交所資料補上
+
+
+def twse_month(sid, ym):
+    """證交所個股日成交資訊（STOCK_DAY），ym＝'YYYYMM'。回傳 {日期: (開, 高, 低, 收, 股數)}。"""
+    r = requests.get("https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY",
+                     params={"date": ym + "01", "stockNo": sid, "response": "json"}, headers=UA, timeout=30)
+    r.raise_for_status()
+    j = r.json()
+    out = {}
+    num = lambda v: float(str(v).replace(",", ""))
+    for row in j.get("data") or []:
+        try:
+            y, m, d = (int(x) for x in str(row[0]).strip().split("/"))
+            out[f"{y + 1911:04d}-{m:02d}-{d:02d}"] = (num(row[3]), num(row[4]), num(row[5]), num(row[6]), num(row[1]))
+        except (ValueError, IndexError):
+            continue          # 停牌等無價格列（"--"）
+    return out
+
+
+def patch_gaps(sid, rows, ref_dates):
+    """以證交所資料補上 Yahoo 缺漏的近期交易日（ref_dates＝多數個股都有的交易日）。還原價沿用前一日的還原因子。"""
+    have = {r["date"] for r in rows}
+    miss = [d for d in ref_dates[-ETF_PATCH_DAYS:] if d not in have and rows and d > rows[0]["date"]]
+    if not miss:
+        return rows, 0
+    got = {}
+    for ym in sorted({d[:7].replace("-", "") for d in miss}):
+        try:
+            got.update(twse_month(sid, ym))
+        except Exception as e:  # noqa: BLE001
+            log(f"[補資料] {sid} {ym} 證交所讀取失敗：{e}")
+        time.sleep(0.6)
+    add = 0
+    for d in miss:
+        if d not in got:
+            continue
+        o, h, l, c, v = got[d]
+        rows.append({"date": d, "open": o, "high": h, "low": l, "close": c, "volume": int(v), "adj": None, "div": 0.0})
+        add += 1
+    rows.sort(key=lambda r: r["date"])
+    for i, r in enumerate(rows):           # 補上的日子：還原價＝收盤 × 前一日還原因子
+        if r["adj"] is None:
+            p = rows[i - 1] if i else None
+            r["adj"] = round(r["close"] * (p["adj"] / p["close"]), 6) if p and p.get("adj") and p["close"] else None
+    return rows, add
+
+
 def drop_intraday(rows, now=None):
     """處理未收盤或標錯日期的最新 K 棒（以呼叫當下的台北時間判斷，掃描可能跨過午夜）。
 
@@ -667,6 +715,18 @@ def build_payload(stocks, prices, now, members=None):
     results, no_data, short = [], [], []
     bt = Backtest()
     cleaned = {k: drop_intraday(list(v)) for k, v in prices.items() if v}
+    # ETF 標的池：Yahoo 偶有整段缺漏（例如 ETF 缺某日 K 棒），以多數個股都有的交易日為準，用證交所資料補上
+    cnt = {}
+    for v in cleaned.values():
+        for r in v[-ETF_PATCH_DAYS - 5:]:
+            cnt[r["date"]] = cnt.get(r["date"], 0) + 1
+    ref = sorted(d for d, n in cnt.items() if n >= len(cleaned) * 0.5)
+    for s in stocks:
+        k = ysym(s)
+        if s.get("etf") and cleaned.get(k):
+            cleaned[k], add = patch_gaps(s["id"], cleaned[k], ref)
+            if add:
+                log(f"[補資料] {s['id']} 以證交所資料補上 {add} 個交易日")
     tdate = target_date(cleaned)
     log(f"[日期] 資料日期 {tdate}")
     for s in stocks:

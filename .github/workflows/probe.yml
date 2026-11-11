@@ -11,11 +11,13 @@ jobs:
       - run: |
           python3 - <<'PY'
           import sys; sys.path.insert(0,'scripts')
-          import scan, datetime as dt
-          syms=['0050.TW','00878.TW','006208.TW','2330.TW']
+          import scan
+          syms=['2330.TW','2317.TW','2454.TW','0050.TW','00878.TW','00929.TW']
           px=scan.fetch_prices(syms)
-          for s in syms:
-              v=px.get(s) or []
-              print('RES', s, len(v), [ (r['date'], r['close']) for r in v[-3:] ])
-              c=scan.drop_intraday(list(v)); print('RES after drop', s, [r['date'] for r in c[-2:]])
+          cl={k:scan.drop_intraday(list(v)) for k,v in px.items()}
+          ref=[r['date'] for r in cl['2330.TW']]
+          for e in ('0050','00878','00929'):
+              rows,add=scan.patch_gaps(e, cl[e+'.TW'], ref)
+              miss=[d for d in ref if d>=rows[0]['date'] and d not in {r['date'] for r in rows}]
+              print('RES',e,'補',add,'最後',[(r['date'],r['open'],r['close'],r['adj'],r['volume']) for r in rows[-3:]],'全期仍缺',len(miss),miss[:6])
           PY
