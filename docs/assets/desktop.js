@@ -81,18 +81,6 @@ function render(results) {
     {h: 'MA10', v: s => f2(s.sig.macdBullTrend.m10)},
     {h: 'MA10斜率', v: s => `<span class="up">+${s.sig.macdBullTrend.slope.toFixed(2)}</span>`},
   ];
-  const cmCols = [
-    {h: 'RSI(6)', v: s => `<span class="up">${f2(s.rsi)}</span>`},
-    {h: '週 RSI', v: s => f2(s.sig.rsiBullMom.wr)},
-    {h: 'MACD 慢線', v: s => f2(s.macd)},
-    {h: 'MA10', v: s => f2(s.sig.macdBullTrend.m10)},
-  ];
-  const cbCols = [
-    {h: '區間', v: s => `${f2(s.sig.boxBull.lo)}～${f2(s.sig.boxBull.hi)}`},
-    {h: '突破幅度', v: s => `<span class="up">+${s.sig.boxBull.brk.toFixed(2)}%</span>`},
-    {h: 'MACD 慢線', v: s => f2(s.macd)},
-    {h: 'MA10', v: s => f2(s.sig.macdBullTrend.m10)},
-  ];
   const mxCols = [
     {h: 'MA10', v: s => f2(s.sig.maBullX.m10)},
     {h: 'MA30', v: s => f2(s.sig.maBullX.m30)},
@@ -140,7 +128,7 @@ function render(results) {
     ['均線空方', uniq(['maBear30', 'maBear60', 'maBear100']), 'bear'],
     ['RSI 多方', uniq(['rsiBull', 'rsiBullMom']), 'bull'],
     ['RSI 空方', lists.rsiBear.length, 'bear'],
-    ['MACD 多方', uniq(['macdBullCross', 'macdBullExp', 'macdBullTrend', 'comboBullMom', 'comboBullBox']), 'bull'],
+    ['MACD 多方', uniq(['macdBullCross', 'macdBullExp', 'macdBullTrend']), 'bull'],
     ['MACD 空方', uniq(['macdBearCross', 'macdBearExp']), 'bear'],
   ].map(([t, v, c]) => `<div class="kpi ${c}"><div class="t">${t}</div><div class="v">${v}</div></div>`).join('');
 
@@ -191,8 +179,6 @@ function render(results) {
         ${box('oscx', '交叉', '柱狀體黃金交叉 0（由 ≤0 轉 >0）', lists.macdBullCross, oscCols, 'macdBullCross')}
         ${box('osce', '動能', '柱狀體 > 0，且連續 2 日放大', lists.macdBullExp, oscCols, 'macdBullExp')}
         ${box('osct', '多頭', SC.MT_TITLE, lists.macdBullTrend, mtCols, 'macdBullTrend')}
-        ${box('cmb', '多頭＋動能', SC.CM_TITLE, lists.comboBullMom, cmCols, 'comboBullMom')}
-        ${box('cmb', '多頭＋箱型', SC.CB_TITLE, lists.comboBullBox, cbCols, 'comboBullBox')}
       </div>
       <div class="side bear"><h3>▼ 空方板塊</h3>
         ${box('oscx', '交叉', '柱狀體死亡交叉 0（由 ≥0 轉 <0）', lists.macdBearCross, oscCols, 'macdBearCross')}

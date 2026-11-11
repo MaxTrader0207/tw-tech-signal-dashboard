@@ -178,10 +178,6 @@ def signal_series(rows):
             s.add("macdBearCross")
         if o0 < 0 and o1 < 0 and o0 < o1 and o1 < o2:
             s.add("macdBearExp")
-        if "macdBullTrend" in s and "rsiBullMom" in s:
-            s.add("comboBullMom")                # 組合：MACD 多頭 ＋ RSI 動能
-        if "macdBullTrend" in s and "boxBull" in s:
-            s.add("comboBullBox")                # 組合：MACD 多頭 ＋ 箱型突破
         out[i] = s
     return rows, out
 
@@ -353,8 +349,4 @@ def analyze(rows):
         res["sig"]["macdBearExp"] = True
     if macd_trend(c, m10x, sig, last):
         res["sig"]["macdBullTrend"] = {"m10": m10x[last], "slope": m10x[last] - m10x[last - 1]}
-        if "rsiBullMom" in res["sig"]:
-            res["sig"]["comboBullMom"] = True     # 組合：MACD 多頭 ＋ RSI 動能
-        if "boxBull" in res["sig"]:
-            res["sig"]["comboBullBox"] = True     # 組合：MACD 多頭 ＋ 箱型突破
     return res
