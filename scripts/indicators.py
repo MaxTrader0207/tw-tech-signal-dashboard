@@ -10,9 +10,29 @@ MA_N = (30, 60, 100)
 CROSS_WIN_BULL = 1   # 多方：收盤黃金交叉均線需發生於最近 1 個交易日（當日）
 CROSS_WIN_BEAR = 3   # 空方：收盤死亡交叉均線需發生於近 3 個交易日內
 MIN_BARS = 110
+MAX_N = (10, 30)     # 多方「均線交叉」：上週週收盤 > 前一週週收盤，日線 MA10 黃金交叉 MA30（近 MAX_WIN 日內）且 MA30 上揚
+MAX_WIN = 2
 RSI_MOM = (50, 70)   # 多方「RSI 動能」：上週週 RSI6 > 50、當日日線 RSI6 > 70 且高於前一日
 BOX_N = 20           # 多方「箱型突破」：前 BOX_N 個交易日（約一個月，不含當日）為整理區間
 BOX_RANGE = 0.15     # 整理區間：區間最高價 ÷ 最低價 − 1 ≤ 15%
+
+
+def wk_up(wk_of_row, weeks, i):
+    """第 i 日的上週週線是否上漲（上週週收盤 > 前一週週收盤）。"""
+    k = wk_of_row[i] - 1
+    return k >= 1 and weeks[k]["c"] > weeks[k - 1]["c"]
+
+
+def ma_x(m10, m30, i):
+    """第 i 日：MA10 於近 MAX_WIN 個交易日內黃金交叉 MA30、今日 MA10 > MA30，且 MA30 較前一日上揚。回傳交叉日索引或 None。"""
+    if i < MAX_WIN or m30[i] is None or m30[i - 1] is None or m10[i] is None:
+        return None
+    if not (m10[i] > m30[i] and m30[i] > m30[i - 1]):
+        return None
+    for j in range(i, i - MAX_WIN, -1):
+        if m30[j - 1] is not None and m10[j - 1] is not None and m10[j - 1] <= m30[j - 1] and m10[j] > m30[j]:
+            return j
+    return None
 
 
 def rsi_mom(r6, i, wr6):
@@ -113,8 +133,11 @@ def signal_series(rows):
     r6 = rsi(c, 6)
     _, _, osc = macd(h, l, c)
     wk_of_row, weeks = weekly_series(rows)
+    m10x, m30x = sma(c, MAX_N[0]), sma(c, MAX_N[1])
     for i in range(MIN_BARS - 1, L):
         s = set()
+        if ma_x(m10x, m30x, i) is not None and wk_up(wk_of_row, weeks, i):
+            s.add("maBullX")
         if box_break(c, h, l, i):
             s.add("boxBull")
         ws = last_week_state(wk_of_row, weeks, i)
@@ -293,6 +316,12 @@ def analyze(rows):
     if res["rsi"] <= 20:
         res["sig"]["rsiBear"] = True
     wk_of_row, weeks = weekly_series(rows)
+    m10x, m30x = sma(c, MAX_N[0]), sma(c, MAX_N[1])
+    j = ma_x(m10x, m30x, last)
+    if j is not None and wk_up(wk_of_row, weeks, last):
+        k = wk_of_row[last] - 1
+        res["sig"]["maBullX"] = {"date": rows[j]["date"], "m10": m10x[last], "m30": m30x[last],
+                                 "slope": m30x[last] - m30x[last - 1], "wc": weeks[k]["c"], "wp": weeks[k - 1]["c"]}
     ws = last_week_state(wk_of_row, weeks, last)
     if rsi_mom(r6, last, ws[4] if ws else None):
         res["sig"]["rsiBullMom"] = {"rp": r6[last - 1], "wr": ws[4]}
