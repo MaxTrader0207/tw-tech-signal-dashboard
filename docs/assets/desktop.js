@@ -220,7 +220,7 @@ async function show(date) {
       (ver >= 4 && ver < 14 ? '｜⚠ 此日期為舊版多方週線條件（非週收站上週MA30且週MACD柱>0）' : '') +
       (ver >= 4 && ver < 15 ? '｜⚠ 此日期為舊版空方週線條件（週收跌破週MA10）' : '');
     $('btNote').innerHTML = cur.bt
-      ? `<span>📊 歷史回測期間 ${SC.btPeriod(cur)}：訊號首日出現後持有 3／5／10／20 個交易日，多方看上漲機率、空方看下跌機率；<b style="color:var(--accent)">金色</b>＝高於同期全體個股基準 3 個百分點以上。回測結果隨「20 日均量」篩選切換。</span>`
+      ? `<span>📊 歷史回測期間 ${SC.btPeriod(cur)}：訊號首日出現後持有 3／5／10／20 個交易日，${cur.bt.cost ? `已扣交易成本（手續費 ${cur.bt.cost.fee}% 買賣各一次、證交稅 ${cur.bt.cost.tax}%、放空另加借券費 ${cur.bt.cost.lend}%），多方看做多獲利機率、空方看放空獲利機率` : '多方看上漲機率、空方看下跌機率'}；<b style="color:var(--accent)">金色</b>＝高於同期全體個股基準 3 個百分點以上。回測結果隨「20 日均量」篩選切換。</span>`
       : '';
     $('dataDate').textContent = cur.date;
     $('genTime').textContent = cur.generated_at ? new Date(cur.generated_at).toLocaleString('zh-TW', {hour12: false}) : '—';

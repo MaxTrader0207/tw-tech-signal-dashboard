@@ -41,6 +41,22 @@ DATA_START = "2023-06-01"          # Yahoo 下載起日：回測起日前需約 
 BT_START = "2024-01-01"            # 歷史回測只統計此日（含）之後出現的訊號
 HORIZONS = (3, 5, 10, 20)          # 回測持有天數（多空相同）
 V_THRESH = (0, 100, 500, 1000, 5000)  # 回測依事件當日 20 日均量（張）分組，對應前端均量門檻
+# 交易成本（普通股、現股／融券、未打折手續費）：
+#   手續費 0.1425%（買、賣各收一次）；證交稅 0.3%（賣出時收，融券賣出亦同）；融券借券費 0.08%（融券賣出時收）
+FEE, TAX, LEND = 0.001425, 0.003, 0.0008
+LONG_K = (1 - FEE - TAX) / (1 + FEE)               # 做多淨報酬 = (1 + 價格報酬) × LONG_K − 1
+
+
+def long_net(g):
+    """做多（收盤買進、出場賣出）扣除手續費與證交稅後的淨報酬；g 為價格報酬。"""
+    return (1 + g) * LONG_K - 1
+
+
+def short_net(g):
+    """放空（收盤融券賣出、出場買回）扣除手續費、證交稅與借券費後的淨報酬（以賣出金額為本）。"""
+    return (1 - FEE - TAX - LEND) - (1 + g) * (1 + FEE)
+
+
 TP_PCT, SL_PCT = 0.05, 0.10        # 多方停利停損回測：進場價（訊號日收盤）+5% 停利、−10% 停損，最多持有 HORIZONS 日
 
 
@@ -436,9 +452,10 @@ class Backtest:
 
     期間：BT_START（2024-01-01）起出現的訊號。
     事件：某訊號在當日出現、前一日沒有（交集組合同理：當日進入該組合）。
-    勝率：多方訊號＝上漲機率，空方訊號＝下跌機率（平盤不計）。
+    報酬一律扣除交易成本：多方＝做多淨報酬，空方＝放空淨報酬（見 long_net／short_net）。
+    勝率：淨報酬 > 0 的比例（多方＝做多獲利機率，空方＝放空獲利機率）。
     報酬同時給平均數與中位數；中位數不受少數極端值（飆股或還原價異常）影響。
-    基準＝同期間所有個股每日的持有報酬。
+    基準＝同期間所有個股每日的持有淨報酬。
     """
 
     def __init__(self):
@@ -514,24 +531,24 @@ class Backtest:
         xs = r[m]
         n = int(xs.size)
         if not n:
-            return [0, None, None, None] if bull is not None else [0, None, None, None, None]
-        mean = float(xs.mean()) * 100
-        med = float(np.median(xs)) * 100
-        up = float((xs > 0).sum()) / n * 100
-        dn = float((xs < 0).sum()) / n * 100
-        if bull is None:   # 基準：n、平均、上漲%、下跌%、中位數
-            return [n, round(mean, 2), round(up, 1), round(dn, 1), round(med, 2)]
-        return [n, round(mean, 2), round(up if bull else dn, 1), round(med, 2)]   # n、平均、勝率、中位數
+            return [0, None, None, None] if bull is not None else [0, None, None, None, None, None, None]
+        pct = lambda v: round(float(v) * 100, 2)
+        L, S = long_net(xs), short_net(xs)
+        if bull is None:   # 基準：n、做多淨均、做多獲利%、放空獲利%、做多淨中位、放空淨均、放空淨中位
+            return [n, pct(L.mean()), round(float((L > 0).sum()) / n * 100, 1), round(float((S > 0).sum()) / n * 100, 1),
+                    pct(np.median(L)), pct(S.mean()), pct(np.median(S))]
+        X = L if bull else S
+        return [n, pct(X.mean()), round(float((X > 0).sum()) / n * 100, 1), pct(np.median(X))]   # n、淨均、勝率、淨中位
 
     def _tpsl(self, idx, t, h, weekly=False):
-        """多方停利停損統計：[n, 平均報酬%, 勝率%(報酬>0), 中位報酬%, 停利出場%, 停損出場%]。"""
+        """多方停利停損統計（扣除交易成本）：[n, 平均淨報酬%, 勝率%(淨報酬>0), 中位報酬%, 停利出場%, 停損出場%]。"""
         v20, r, x = self.V20, self.TP[h], self.TX[h]
         if idx is not None:
             v20, r, x = v20[idx], r[idx], x[idx]
         m = (v20 >= t) & ~np.isnan(r)
         if weekly:
             m &= (self.WB if idx is None else self.WB[idx])
-        xs, ex = r[m], x[m]
+        xs, ex = long_net(r[m]), x[m]
         n = int(xs.size)
         if not n:
             return [0, None, None, None, None, None]
@@ -551,6 +568,7 @@ class Backtest:
         log(f"[回測] {BT_START} 起，基準樣本 {self.V20.size:,} 筆，訊號 {len(ev)} 種")
         return {
             "from": self.d0, "to": self.d1, "h": list(HORIZONS),
+            "cost": {"fee": round(FEE * 100, 4), "tax": round(TAX * 100, 4), "lend": round(LEND * 100, 4)},   # 交易成本（%），回測報酬皆為淨報酬
             "base": {str(t): {str(h): self._stats(None, t, h) for h in HORIZONS} for t in V_THRESH},
             "by": {str(t): {k: {str(h): self._stats(ix, t, h, "Bull" in k) for h in HORIZONS}
                             for k, ix in ev.items()} for t in V_THRESH},
@@ -616,7 +634,7 @@ def build_payload(stocks, prices, now):
     fresh.sort(key=lambda x: x["id"])
     return {
         "date": max_date,
-        "ver": 16,                      # …10：新增 maBull10；11：週MACD柱>0；12：多方週線條件改為週K收紅且站上週MA30；13：移除 maBull10、多方週線條件改為週收站上週MA30；14：多方再加週MACD柱>0；15：空方改為週收跌破週MA30；16：多方停利停損回測 tpsl
+        "ver": 17,                      # …10：新增 maBull10；11：週MACD柱>0；12：多方週線條件改為週K收紅且站上週MA30；13：移除 maBull10、多方週線條件改為週收站上週MA30；14：多方再加週MACD柱>0；15：空方改為週收跌破週MA30；16：多方停利停損回測 tpsl；17：回測扣除交易成本
         "generated_at": now.isoformat(timespec="seconds"),
         "source": "Yahoo Finance 日線與配息（yfinance）；股票清單：臺灣證券交易所 ISIN 公告／OpenAPI",
         "stats": {

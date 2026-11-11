@@ -210,7 +210,7 @@ SC.sigTag = (s, k) =>
   `${s.st && s.st[k] ? '・' + SC.runTxt(s.st[k]) : ''}${s.exHit && s.exHit.includes(k) ? '・⚠除息影響' : ''}</span>`;
 
 /* ---------- 歷史回測 ----------
- * 勝率：多方訊號＝持有期間上漲機率；空方訊號＝下跌機率。基準＝同期所有個股每日持有報酬。 */
+ * 勝率：多方訊號＝做多淨報酬 > 0 的機率；空方訊號＝放空淨報酬 > 0 的機率（ver 17 起扣除交易成本；舊資料為漲／跌機率）。基準＝同期所有個股每日持有報酬。 */
 SC.bt = (cur, key, v20, wk) => {
   const bt = cur && cur.bt;
   if (!bt || !bt.by) return null;
@@ -225,10 +225,14 @@ SC.bt = (cur, key, v20, wk) => {
     const baseWin = b[2] == null ? null : (bull ? b[2] : (b[3] != null ? b[3] : 100 - b[2]));   // 空方基準＝下跌率（不含平盤）
     // 報酬優先用中位數（不受極端值影響），舊資料沒有中位數時退回平均數
     const med = v[3] != null ? v[3] : null;
-    return {h, n: v[0], avg: v[1], med, ret: med != null ? med : v[1], retLabel: med != null ? '中位報酬' : '均報',
-            win: v[2], baseWin, baseRet: b[4] != null ? b[4] : b[1]};
+    // ver 17 起回測為扣除交易成本的淨報酬；空方為放空淨報酬（正值＝放空獲利），基準取 b[6]
+    const net = !!bt.cost;
+    const baseRet = net && !bull ? b[6] : (b[4] != null ? b[4] : b[1]);
+    return {h, n: v[0], avg: v[1], med, ret: med != null ? med : v[1],
+            retLabel: med == null ? '均報' : net ? (bull ? '淨中位' : '放空淨中位') : '中位報酬',
+            win: v[2], baseWin, baseRet};
   });
-  return {rows, n: rows[0].n, bull, from: bt.from, to: bt.to, wk: !!(wk && bt.byW)};
+  return {rows, n: rows[0].n, bull, net: !!bt.cost, cost: bt.cost, from: bt.from, to: bt.to, wk: !!(wk && bt.byW)};
 };
 SC.btHtml = (cur, key, v20, opts = {}) => {
   const r = SC.bt(cur, key, v20, opts.wk);
@@ -241,12 +245,12 @@ SC.btHtml = (cur, key, v20, opts = {}) => {
     const c = few ? '' : diff >= 3 ? 'good' : diff <= -3 ? 'poor' : '';
     const rc = x.ret > 0 ? 'up' : x.ret < 0 ? 'dn' : '';
     const tip = `平均報酬 ${x.avg > 0 ? '+' : ''}${x.avg.toFixed(2)}%；基準${x.retLabel} ${x.baseRet == null ? '—' : (x.baseRet > 0 ? '+' : '') + x.baseRet.toFixed(2) + '%'}`;
-    return `<span class="bt-i" title="${tip}"><em>${x.h}日</em>${r.bull ? '漲' : '跌'}機率 <b class="${c}">${x.win.toFixed(0)}%</b>` +
+    return `<span class="bt-i" title="${tip}"><em>${x.h}日</em>${r.net ? (r.bull ? '獲利' : '放空獲利') : r.bull ? '漲' : '跌'}機率 <b class="${c}">${x.win.toFixed(0)}%</b>` +
       `${opts.short ? '' : `<small>（基準 ${x.baseWin == null ? '—' : x.baseWin.toFixed(0) + '%'}）</small>`}` +
       ` ${x.retLabel} <b class="${rc}">${x.ret > 0 ? '+' : ''}${x.ret.toFixed(2)}%</b></span>`;
   }).join('');
-  return `<div class="bt" title="近 ${r.from || ''}～${r.to || ''} 期間，訊號首日出現後持有 N 日的表現（還原權息價）。多方看上漲機率、空方看下跌機率；基準為同期所有個股。">` +
-    `<span class="bt-h">📊 歷史回測${r.wk ? '（含週線條件）' : ''} <small>n=${SC.int(r.n)}${few ? '・樣本不足' : ''}</small></span>${items}</div>` + SC.tpslHtml(cur, key, v20, opts);
+  return `<div class="bt" title="近 ${r.from || ''}～${r.to || ''} 期間，訊號首日出現後持有 N 日的表現（還原權息價）。${r.net ? SC.costTxt(r.cost) + '多方看做多獲利機率、空方看放空獲利機率' : '多方看上漲機率、空方看下跌機率'}；基準為同期所有個股。">` +
+    `<span class="bt-h">📊 歷史回測${r.wk ? '（含週線條件）' : ''}${r.net ? '<small>・已扣成本</small>' : ''} <small>n=${SC.int(r.n)}${few ? '・樣本不足' : ''}</small></span>${items}</div>` + SC.tpslHtml(cur, key, v20, opts);
 };
 /* 多方停利停損回測：進場＝訊號日收盤，+5% 停利、−10% 停損，最多持有 N 日（未觸發則第 N 日收盤出場） */
 SC.tpslHtml = (cur, key, v20, opts = {}) => {
@@ -265,15 +269,16 @@ SC.tpslHtml = (cur, key, v20, opts = {}) => {
     if (!v || v[2] == null) return '';
     const diff = b && b[2] != null ? v[2] - b[2] : 0;
     const c = few ? '' : diff >= 3 ? 'good' : diff <= -3 ? 'poor' : '';
-    const tip = `中位報酬 ${sg(v[3])}；基準勝率 ${b && b[2] != null ? b[2].toFixed(1) + '%' : '—'}、基準平均 ${b && b[1] != null ? sg(b[1]) : '—'}`;
+    const tip = `${cur.bt.cost ? '淨' : ''}中位報酬 ${sg(v[3])}；基準勝率 ${b && b[2] != null ? b[2].toFixed(1) + '%' : '—'}、基準平均 ${b && b[1] != null ? sg(b[1]) : '—'}`;
     return `<span class="bt-i" title="${tip}"><em>${h}日</em>勝率 <b class="${c}">${v[2].toFixed(0)}%</b>` +
       `${opts.short ? '' : `<small>（基準 ${b && b[2] != null ? b[2].toFixed(0) + '%' : '—'}）</small>`}` +
-      ` 平均 <b class="${v[1] > 0 ? 'up' : v[1] < 0 ? 'dn' : ''}">${sg(v[1])}</b>` +
+      ` ${cur.bt.cost ? '淨均' : '平均'} <b class="${v[1] > 0 ? 'up' : v[1] < 0 ? 'dn' : ''}">${sg(v[1])}</b>` +
       ` <small>停利 ${v[4].toFixed(0)}%／停損 ${v[5].toFixed(0)}%</small></span>`;
   }).join('');
-  return `<div class="bt" title="訊號日收盤進場；之後最高觸及 +${T.tp}% 停利、最低觸及 −${T.sl}% 停損（跳空則以開盤價出場；同日兩者皆觸及視為先停損），最多持有 N 日，未觸發則第 N 日收盤出場。勝率＝出場報酬 > 0 的比例。">` +
-    `<span class="bt-h">🎯 停利 ${T.tp}%／停損 ${T.sl}%${opts.wk && T.byW ? '（含週線條件）' : ''} <small>n=${SC.int(n)}${few ? '・樣本不足' : ''}</small></span>${items}</div>`;
+  return `<div class="bt" title="訊號日收盤進場；之後最高觸及 +${T.tp}% 停利、最低觸及 −${T.sl}% 停損（跳空則以開盤價出場；同日兩者皆觸及視為先停損），最多持有 N 日，未觸發則第 N 日收盤出場。勝率＝出場報酬 > 0 的比例。${SC.costTxt(cur.bt.cost)}">` +
+    `<span class="bt-h">🎯 停利 ${T.tp}%／停損 ${T.sl}%${opts.wk && T.byW ? '（含週線條件）' : ''}${cur.bt.cost ? '<small>・已扣成本</small>' : ''} <small>n=${SC.int(n)}${few ? '・樣本不足' : ''}</small></span>${items}</div>`;
 };
+SC.costTxt = c => c ? `已扣交易成本：手續費 ${c.fee}%（買賣各一次）、證交稅 ${c.tax}%（賣出）${c.lend ? `、融券借券費 ${c.lend}%（放空）` : ''}。` : '';
 SC.btPeriod = cur => cur && cur.bt && cur.bt.from ? `${cur.bt.from}～${cur.bt.to}` : '';
 
 /* ---------- 查無原因 ---------- */
