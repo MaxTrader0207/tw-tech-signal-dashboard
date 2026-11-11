@@ -109,7 +109,7 @@ SC.macdTxt = (s, B) => SC.fam(s, B).macd.map(t => t === 'Cross' ? (B === 'Bull' 
 
 /* ---------- 篩選 ----------
  * o = {mkt, ind, v20, exx, nw, watchOnly, wk, wkStrict}
- *   wk：週線濾網——多方訊號需上週週 MACD 柱狀體 > 0，空方訊號需上週週收盤跌破上週週 MA10
+ *   wk：週線濾網——多方訊號需上週週K收紅（週收 > 週開）且週收盤 > 週 MA30，空方訊號需上週週收盤跌破上週週 MA10
  *   wkStrict：資料有週線欄位（ver ≥ 4）時，缺週線資料的個股不保留訊號
  * 回傳的個股物件 sig 已依「排除除息影響／只看新增」過濾（原物件不變）。 */
 SC.filter = (stocks, o) => {
@@ -136,15 +136,18 @@ SC.filter = (stocks, o) => {
 };
 
 /* ---------- 週線 ---------- */
-// 多方週線條件：上週週 MACD 柱狀體 > 0（ver 11）；舊資料沿用當時的 bull（週RSI6）／rise（週MA10上揚）／up（週收站上）
+// 多方週線條件：上週週K收紅且週收盤 > 週MA30（ver 12）；舊資料沿用當時產生的 bull／rise／up
 SC.wkBull = s => !!s.wk && (s.wk.bull != null ? s.wk.bull : s.wk.rise != null ? s.wk.rise : !!s.wk.up);
 SC.wkPass = (s, B) => !!(s.wk && (B === 'Bull' ? SC.wkBull(s) : s.wk.dn));
-SC.wkSfx = key => /Bull/.test(key) ? '＋上週週MACD柱狀體>0' : '＋上週週線跌破週MA10';
+SC.wkSfx = key => /Bull/.test(key) ? '＋上週週K收紅且站上週MA30' : '＋上週週線跌破週MA10';
+SC.wkRed = s => !!s.wk && s.wk.o != null && s.wk.c > s.wk.o;
+SC.wkAbove30 = s => !!s.wk && s.wk.ma30 != null && s.wk.c > s.wk.ma30;
 SC.r6Arrow = s => s.wk && s.wk.rp != null ? (s.wk.r6 > s.wk.rp ? '↑' : s.wk.r6 < s.wk.rp ? '↓' : '→') : '';
 SC.wkArrow = s => s.wk && s.wk.mp != null ? (s.wk.ma > s.wk.mp ? '↑' : s.wk.ma < s.wk.mp ? '↓' : '→') : '';
 SC.wkCell = s => s.wk ? `<span class="${s.wk.dn ? 'dn' : 'up'}">${SC.f2(s.wk.c)}</span><small> / </small>` +
   `<span class="${s.wk.mp == null ? '' : s.wk.ma > s.wk.mp ? 'up' : 'dn'}">${SC.f2(s.wk.ma)}${SC.wkArrow(s)}</span>` +
-  (s.wk.osc != null ? `<small>｜OSC </small><span class="${s.wk.osc > 0 ? 'up' : 'dn'}">${SC.f2(s.wk.osc)}</span>` : '') : '—';
+  (s.wk.o != null ? `<small>｜K </small><span class="${SC.wkRed(s) ? 'up' : 'dn'}">${SC.wkRed(s) ? '紅' : '黑'}</span>` : '') +
+  (s.wk.ma30 != null ? `<small>｜MA30 </small><span class="${SC.wkAbove30(s) ? 'up' : 'dn'}">${SC.f2(s.wk.ma30)}</span>` : '') : '—';
 
 /* 自選股置頂（穩定排序，保留原順序） */
 SC.watchFirst = arr => {
@@ -261,13 +264,14 @@ SC.whyMissing = (cur, K, filtered) => {
 };
 
 /* ---------- 輸出 ---------- */
-SC.CSV_BASE_HEAD = ['資料日期', '多空', '條件', '代號', '名稱', '市場', '產業', '收盤', '漲跌幅(%)', '20日均量(張)', '在榜天數', '除息日', '除息影響', '自選股', '上週週收盤', '上週週MA10', '前一週週MA10', '上週週RSI6', '前一週週RSI6', '上週週MACD柱狀體'];
+SC.CSV_BASE_HEAD = ['資料日期', '多空', '條件', '代號', '名稱', '市場', '產業', '收盤', '漲跌幅(%)', '20日均量(張)', '在榜天數', '除息日', '除息影響', '自選股', '上週週收盤', '上週週MA10', '前一週週MA10', '上週週RSI6', '前一週週RSI6', '上週週MACD柱狀體', '上週週開盤', '上週週MA30'];
 SC.csvBase = (cur, side, title, s, key) => [
   cur.date, side, title, s.id, s.name, SC.MKT[s.mkt] || '', s.ind || '', SC.f2(s.close),
   s.chg == null ? '' : s.chg.toFixed(2), s.v20 ?? '', SC.streakOf(s, key) ?? '',
   s.ex ? s.ex.d : '', SC.exHitOf(s, key) ? '是' : '', SC.watch.has(s.id) ? '是' : '',
   s.wk ? SC.f2(s.wk.c) : '', s.wk ? SC.f2(s.wk.ma) : '', s.wk && s.wk.mp != null ? SC.f2(s.wk.mp) : '',
-  s.wk && s.wk.r6 != null ? SC.f2(s.wk.r6) : '', s.wk && s.wk.rp != null ? SC.f2(s.wk.rp) : '', s.wk && s.wk.osc != null ? SC.f2(s.wk.osc) : ''];
+  s.wk && s.wk.r6 != null ? SC.f2(s.wk.r6) : '', s.wk && s.wk.rp != null ? SC.f2(s.wk.rp) : '', s.wk && s.wk.osc != null ? SC.f2(s.wk.osc) : '',
+  s.wk && s.wk.o != null ? SC.f2(s.wk.o) : '', s.wk && s.wk.ma30 != null ? SC.f2(s.wk.ma30) : ''];
 SC.csvName = (cur, side, key) => `技術訊號_${cur.date}_${side}_${SC.FILE_LABEL[key] || key}.csv`;
 SC.saveCsv = (name, rows, share) => {
   const csv = '﻿' + rows.map(r => r.map(SC.csvCell).join(',')).join('\r\n');

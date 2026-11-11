@@ -138,6 +138,7 @@ def signal_series(rows):
 
 
 WEEK_MA = 10
+WEEK_MA30 = 30
 WEEK_RSI = 6
 
 
@@ -148,7 +149,8 @@ def weekly_series(rows):
       wk_of_row[i] ＝ 第 i 個交易日所屬週在 weeks 中的索引
       weeks[k]     ＝ {"d": 該週最後交易日, "c": 週收盤, "ma": 週 MA10（不足 10 週為 None）,
                        "r6": 週 RSI(6)（三竹 Wilder 平滑，以週收盤計算；不足 7 週為 None）,
-                       "osc": 週 MACD 柱狀體（三竹公式 DI=(H+L+2C)/4、12/26/9，以週 K 計算）}
+                       "osc": 週 MACD 柱狀體（三竹公式 DI=(H+L+2C)/4、12/26/9，以週 K 計算）,
+                       "o": 週開盤（該週第一個交易日開盤）, "ma30": 週 MA30（不足 30 週為 None）}
     """
     import datetime as _dt
     weeks, wk_of_row, keys = [], [], []
@@ -162,7 +164,8 @@ def weekly_series(rows):
             w["d"], w["c"], w["h"], w["l"] = r["date"], c, max(w["h"], hi), min(w["l"], lo)
         else:
             keys.append(k)
-            weeks.append({"d": r["date"], "c": c, "h": hi, "l": lo, "ma": None})
+            weeks.append({"d": r["date"], "o": float(r.get("open", c)), "c": c, "h": hi, "l": lo,
+                          "ma": None, "ma30": None})
         wk_of_row.append(len(weeks) - 1)
     s = 0.0
     for k, w in enumerate(weeks):
@@ -171,6 +174,13 @@ def weekly_series(rows):
             s -= weeks[k - WEEK_MA]["c"]
         if k >= WEEK_MA - 1:
             w["ma"] = s / WEEK_MA
+    s30 = 0.0
+    for k, w in enumerate(weeks):
+        s30 += w["c"]
+        if k >= WEEK_MA30:
+            s30 -= weeks[k - WEEK_MA30]["c"]
+        if k >= WEEK_MA30 - 1:
+            w["ma30"] = s30 / WEEK_MA30
     r = rsi([w["c"] for w in weeks], WEEK_RSI)
     for w, v in zip(weeks, r):
         w["r6"] = v
@@ -183,11 +193,18 @@ def weekly_series(rows):
 
 def last_week_state(wk_of_row, weeks, i):
     """第 i 個交易日的「上週」週線狀態：
-    (上週收盤, 上週週MA10, 上週最後交易日, 前一週週MA10, 上週週RSI6, 前一週週RSI6, 上週週MACD柱狀體)；資料不足回傳 None。"""
+    (上週收盤, 上週週MA10, 上週最後交易日, 前一週週MA10, 上週週RSI6, 前一週週RSI6, 上週週MACD柱狀體,
+     上週週開盤, 上週週MA30（不足 30 週為 None）)；資料不足回傳 None。"""
     k = wk_of_row[i] - 1
     if k < 1 or weeks[k]["ma"] is None or weeks[k - 1]["ma"] is None or weeks[k]["r6"] is None or weeks[k - 1]["r6"] is None:
         return None
-    return weeks[k]["c"], weeks[k]["ma"], weeks[k]["d"], weeks[k - 1]["ma"], weeks[k]["r6"], weeks[k - 1]["r6"], weeks[k]["osc"]
+    return (weeks[k]["c"], weeks[k]["ma"], weeks[k]["d"], weeks[k - 1]["ma"], weeks[k]["r6"], weeks[k - 1]["r6"],
+            weeks[k]["osc"], weeks[k]["o"], weeks[k]["ma30"])
+
+
+def wk_bull(ws):
+    """多方週線條件：上週週K收紅（週收盤 > 週開盤）且週收盤 > 週 MA30。"""
+    return bool(ws) and ws[0] > ws[7] and ws[8] is not None and ws[0] > ws[8]
 
 
 def x_group(sigs, side):
