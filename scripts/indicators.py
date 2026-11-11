@@ -142,23 +142,27 @@ WEEK_RSI = 6
 
 
 def weekly_series(rows):
-    """依日線組成週線（週一至週日為一週，週收盤＝該週最後一個交易日收盤）。
+    """依日線組成週線（週一至週日為一週，週收盤＝該週最後一個交易日收盤，週高／低＝該週日線最高／最低）。
 
     回傳 (wk_of_row, weeks)：
       wk_of_row[i] ＝ 第 i 個交易日所屬週在 weeks 中的索引
       weeks[k]     ＝ {"d": 該週最後交易日, "c": 週收盤, "ma": 週 MA10（不足 10 週為 None）,
-                       "r6": 週 RSI(6)（三竹 Wilder 平滑，以週收盤計算；不足 7 週為 None）}
+                       "r6": 週 RSI(6)（三竹 Wilder 平滑，以週收盤計算；不足 7 週為 None）,
+                       "osc": 週 MACD 柱狀體（三竹公式 DI=(H+L+2C)/4、12/26/9，以週 K 計算）}
     """
     import datetime as _dt
     weeks, wk_of_row, keys = [], [], []
     for r in rows:
         y, w, _ = _dt.date.fromisoformat(r["date"]).isocalendar()
         k = (y, w)
+        c = float(r["close"])
+        hi, lo = float(r.get("high", c)), float(r.get("low", c))
         if keys and keys[-1] == k:
-            weeks[-1]["d"], weeks[-1]["c"] = r["date"], float(r["close"])
+            w = weeks[-1]
+            w["d"], w["c"], w["h"], w["l"] = r["date"], c, max(w["h"], hi), min(w["l"], lo)
         else:
             keys.append(k)
-            weeks.append({"d": r["date"], "c": float(r["close"]), "ma": None})
+            weeks.append({"d": r["date"], "c": c, "h": hi, "l": lo, "ma": None})
         wk_of_row.append(len(weeks) - 1)
     s = 0.0
     for k, w in enumerate(weeks):
@@ -170,16 +174,20 @@ def weekly_series(rows):
     r = rsi([w["c"] for w in weeks], WEEK_RSI)
     for w, v in zip(weeks, r):
         w["r6"] = v
+    if weeks:
+        _, _, osc = macd([w["h"] for w in weeks], [w["l"] for w in weeks], [w["c"] for w in weeks])
+        for w, v in zip(weeks, osc):
+            w["osc"] = v
     return wk_of_row, weeks
 
 
 def last_week_state(wk_of_row, weeks, i):
     """第 i 個交易日的「上週」週線狀態：
-    (上週收盤, 上週週MA10, 上週最後交易日, 前一週週MA10, 上週週RSI6, 前一週週RSI6)；資料不足回傳 None。"""
+    (上週收盤, 上週週MA10, 上週最後交易日, 前一週週MA10, 上週週RSI6, 前一週週RSI6, 上週週MACD柱狀體)；資料不足回傳 None。"""
     k = wk_of_row[i] - 1
     if k < 1 or weeks[k]["ma"] is None or weeks[k - 1]["ma"] is None or weeks[k]["r6"] is None or weeks[k - 1]["r6"] is None:
         return None
-    return weeks[k]["c"], weeks[k]["ma"], weeks[k]["d"], weeks[k - 1]["ma"], weeks[k]["r6"], weeks[k - 1]["r6"]
+    return weeks[k]["c"], weeks[k]["ma"], weeks[k]["d"], weeks[k - 1]["ma"], weeks[k]["r6"], weeks[k - 1]["r6"], weeks[k]["osc"]
 
 
 def x_group(sigs, side):

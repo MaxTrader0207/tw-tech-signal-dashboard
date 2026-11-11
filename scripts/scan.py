@@ -414,7 +414,7 @@ class Backtest:
         # 以欄位陣列儲存（2024 年起約 140 萬筆基準樣本，避免大量 Python 物件占用記憶體）
         self._v20 = array("d")                               # 事件當日 20 日均量（張）
         self._ret = {h: array("d") for h in HORIZONS}       # 持有 h 日報酬，超出資料範圍為 NaN
-        self._wb = bytearray()                               # 多方週線條件：上週週 RSI6 > 50 且上揚
+        self._wb = bytearray()                               # 多方週線條件：上週週 MACD 柱狀體 > 0
         self._wd = bytearray()                               # 空方週線條件：上週週收盤跌破週 MA10
         self.ev = {}                                         # 訊號 key -> 基準樣本索引 array("l")
         self.d0, self.d1 = None, None
@@ -442,7 +442,7 @@ class Backtest:
             for h in HORIZONS:
                 self._ret[h].append(px[i + h] / px[i] - 1 if i + h < L else nan)
             ws = last_week_state(wk_of_row, weeks, i)
-            self._wb.append(1 if ws and ws[4] > 50 and ws[4] > ws[5] else 0)
+            self._wb.append(1 if ws and ws[6] > 0 else 0)
             self._wd.append(1 if ws and ws[0] < ws[1] else 0)
             events = list(fi - fp)
             for side in ("Bull", "Bear"):
@@ -458,7 +458,7 @@ class Backtest:
 
     def _stats(self, idx, t, h, bull=None, weekly=False):
         """idx＝事件樣本索引（None 表示基準＝全部樣本）。
-        weekly=True：多方只取上週週 RSI(6) > 50 且上揚的事件，空方只取上週週收盤跌破週 MA10 的事件。"""
+        weekly=True：多方只取上週週 MACD 柱狀體 > 0 的事件，空方只取上週週收盤跌破週 MA10 的事件。"""
         v20, r = self.V20, self.R[h]
         if idx is not None:
             v20, r = v20[idx], r[idx]
@@ -520,10 +520,10 @@ def build_payload(stocks, prices, now):
         bt.add(srows, flags)
         wk_of_row, weeks = weekly_series(srows)
         ws = last_week_state(wk_of_row, weeks, len(srows) - 1)
-        if ws:   # 多方條件＝上週週 RSI6 > 50 且高於前一週；空方條件＝上週週收盤跌破週 MA10
+        if ws:   # 多方條件＝上週週 MACD 柱狀體 > 0；空方條件＝上週週收盤跌破週 MA10
             item["wk"] = {"d": ws[2], "c": r(ws[0], 4), "ma": r(ws[1], 4), "mp": r(ws[3], 4),
-                          "r6": r(ws[4], 2), "rp": r(ws[5], 2),
-                          "rise": ws[1] > ws[3], "bull": ws[4] > 50 and ws[4] > ws[5], "dn": ws[0] < ws[1]}
+                          "r6": r(ws[4], 2), "rp": r(ws[5], 2), "osc": r(ws[6], 4),
+                          "rise": ws[1] > ws[3], "bull": ws[6] > 0, "dn": ws[0] < ws[1]}
         if a["sig"]:
             item["st"] = streaks(flags, list(a["sig"]))
         ex = ex_dividend(rows)
@@ -545,7 +545,7 @@ def build_payload(stocks, prices, now):
     fresh.sort(key=lambda x: x["id"])
     return {
         "date": max_date,
-        "ver": 10,                      # …8：多方交叉近 2 日；9：多方均線交叉當日；10：新增多方「MA10 強勢」maBull10
+        "ver": 11,                      # …9：多方均線交叉當日；10：新增 maBull10；11：多方週線條件改為上週週MACD柱狀體>0
         "generated_at": now.isoformat(timespec="seconds"),
         "source": "Yahoo Finance 日線與配息（yfinance）；股票清單：臺灣證券交易所 ISIN 公告／OpenAPI",
         "stats": {
