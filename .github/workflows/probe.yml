@@ -1,0 +1,21 @@
+name: probe
+on: workflow_dispatch
+jobs:
+  p:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -q -r requirements.txt
+      - run: |
+          python3 - <<'PY'
+          import sys; sys.path.insert(0,'scripts')
+          import scan, datetime as dt
+          syms=['0050.TW','00878.TW','006208.TW','2330.TW']
+          px=scan.fetch_prices(syms)
+          for s in syms:
+              v=px.get(s) or []
+              print('RES', s, len(v), [ (r['date'], r['close']) for r in v[-3:] ])
+              c=scan.drop_intraday(list(v)); print('RES after drop', s, [r['date'] for r in c[-2:]])
+          PY
