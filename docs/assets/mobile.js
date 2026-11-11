@@ -51,13 +51,17 @@ function blocksFor(t, B) {
   if (t === 'macd') return [
     {key: `macd${B}Cross`, cls: 'oscx', badge: '交叉', kind: 'macd', list: lists[`macd${B}Cross`], title: bull ? '柱狀體由 ≤0 轉 >0' : '柱狀體由 ≥0 轉 <0'},
     {key: `macd${B}Exp`, cls: 'osce', badge: '動能', kind: 'macd', list: lists[`macd${B}Exp`], title: bull ? '柱狀體 >0 且連 2 日放大' : '柱狀體 <0 且連 2 日減少'},
-  ].concat(bull ? [{key: 'macdBullTrend', cls: 'osct', badge: '多頭', kind: 'mt', list: lists.macdBullTrend, title: SC.MT_TITLE}] : []);
+  ].concat(bull ? [{key: 'macdBullTrend', cls: 'osct', badge: '多頭', kind: 'mt', list: lists.macdBullTrend, title: SC.MT_TITLE},
+    {key: 'comboBullMom', cls: 'cmb', badge: '多頭＋動能', kind: 'cm', list: lists.comboBullMom, title: SC.CM_TITLE},
+    {key: 'comboBullBox', cls: 'cmb', badge: '多頭＋箱型', kind: 'cb', list: lists.comboBullBox, title: SC.CB_TITLE}] : []);
   return [];
 }
 const sideCount = (t, B) => SC.uniq(blocksFor(t, B).map(b => b.list));
 
 /* ---------- 卡片 ---------- */
 function metrics(b, s, B) {
+  if (b.kind === 'cm') return `<span>RSI <b class="up">${f2(s.rsi)}</b></span><span>週RSI <b>${f2(s.sig.rsiBullMom.wr)}</b></span><span>慢線 <b>${f2(s.macd)}</b></span>`;
+  if (b.kind === 'cb') return `<span>區間 <b>${f2(s.sig.boxBull.lo)}～${f2(s.sig.boxBull.hi)}</b></span><span>突破 <b class="up">+${s.sig.boxBull.brk.toFixed(2)}%</b></span><span>慢線 <b>${f2(s.macd)}</b></span>`;
   if (b.kind === 'mt') return `<span>慢線 <b class="up">${f2(s.macd)}</b></span><span>DIF <b>${f2(s.dif)}</b></span><span>MA10 <b>${f2(s.sig.macdBullTrend.m10)}</b></span><span>斜率 <b class="up">+${s.sig.macdBullTrend.slope.toFixed(2)}</b></span>`;
   if (b.kind === 'mx') {
     const g = s.sig.maBullX;
@@ -227,8 +231,10 @@ window.addEventListener('popstate', () => closeSheet(true));
 /* ---------- 輸出 ---------- */
 function exportCsv(b) {
   const B = side, sideTxt = B === 'Bull' ? '多方' : '空方';
-  const extraH = {mt: ['MACD慢線', 'DIF', 'MA10', 'MA10斜率'], mx: ['MA10', 'MA30', '交叉日', 'MA30斜率', '上週週漲幅(%)'], mom: ['RSI(6)', '前日RSI(6)', '上週週RSI(6)'], box: ['區間高', '區間低', '區間幅度(%)', '突破幅度(%)'], ma: [`MA${b.n}`, '交叉日', '均線斜率'], rsi: ['RSI(6)'], macd: ['OSC 前2日', 'OSC 前1日', 'OSC 今日', 'DIF', 'MACD'], x: ['均線', 'RSI(6)', 'MACD', '訊號']}[b.kind];
-  const extra = s => b.kind === 'mt' ? [f2(s.macd), f2(s.dif), f2(s.sig.macdBullTrend.m10), s.sig.macdBullTrend.slope.toFixed(2)]
+  const extraH = {cm: ['RSI(6)', '上週週RSI(6)', 'MACD慢線', 'MA10'], cb: ['區間高', '區間低', '突破幅度(%)', 'MACD慢線'], mt: ['MACD慢線', 'DIF', 'MA10', 'MA10斜率'], mx: ['MA10', 'MA30', '交叉日', 'MA30斜率', '上週週漲幅(%)'], mom: ['RSI(6)', '前日RSI(6)', '上週週RSI(6)'], box: ['區間高', '區間低', '區間幅度(%)', '突破幅度(%)'], ma: [`MA${b.n}`, '交叉日', '均線斜率'], rsi: ['RSI(6)'], macd: ['OSC 前2日', 'OSC 前1日', 'OSC 今日', 'DIF', 'MACD'], x: ['均線', 'RSI(6)', 'MACD', '訊號']}[b.kind];
+  const extra = s => b.kind === 'cm' ? [f2(s.rsi), f2(s.sig.rsiBullMom.wr), f2(s.macd), f2(s.sig.macdBullTrend.m10)]
+    : b.kind === 'cb' ? [f2(s.sig.boxBull.hi), f2(s.sig.boxBull.lo), s.sig.boxBull.brk.toFixed(2), f2(s.macd)]
+    : b.kind === 'mt' ? [f2(s.macd), f2(s.dif), f2(s.sig.macdBullTrend.m10), s.sig.macdBullTrend.slope.toFixed(2)]
     : b.kind === 'mx' ? [f2(s.sig.maBullX.m10), f2(s.sig.maBullX.m30), md(s.sig.maBullX.date), s.sig.maBullX.slope.toFixed(2), ((s.sig.maBullX.wc / s.sig.maBullX.wp - 1) * 100).toFixed(2)]
     : b.kind === 'mom' ? [f2(s.rsi), f2(s.sig.rsiBullMom.rp), f2(s.sig.rsiBullMom.wr)]
     : b.kind === 'box' ? [f2(s.sig.boxBull.hi), f2(s.sig.boxBull.lo), s.sig.boxBull.rng.toFixed(1), s.sig.boxBull.brk.toFixed(2)]

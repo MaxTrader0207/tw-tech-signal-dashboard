@@ -775,7 +775,7 @@ def build_payload(stocks, prices, now, members=None):
     fresh.sort(key=lambda x: x["id"])
     return {
         "date": max_date,
-        "ver": 24,                      # …10：新增 maBull10；11：週MACD柱>0；12：多方週線條件改為週K收紅且站上週MA30；13：移除 maBull10、多方週線條件改為週收站上週MA30；14：多方再加週MACD柱>0；15：空方改為週收跌破週MA30；16：多方停利停損回測 tpsl；17：回測扣除交易成本；18：停利 5／10／15% 三級距；19：標的範圍（0050／中型100 成分股）與分組回測 bt.u；20：ETF 標的池（idx=etf，不計入全市場）；21：多方箱型突破 boxBull；22：多方 RSI 動能 rsiBullMom；23：多方均線交叉 maBullX；24：多方 MACD 多頭 macdBullTrend
+        "ver": 25,                      # …10：新增 maBull10；11：週MACD柱>0；12：多方週線條件改為週K收紅且站上週MA30；13：移除 maBull10、多方週線條件改為週收站上週MA30；14：多方再加週MACD柱>0；15：空方改為週收跌破週MA30；16：多方停利停損回測 tpsl；17：回測扣除交易成本；18：停利 5／10／15% 三級距；19：標的範圍（0050／中型100 成分股）與分組回測 bt.u；20：ETF 標的池（idx=etf，不計入全市場）；21：多方箱型突破 boxBull；22：多方 RSI 動能 rsiBullMom；23：多方均線交叉 maBullX；24：多方 MACD 多頭 macdBullTrend；25：組合 comboBullMom／comboBullBox
         "generated_at": now.isoformat(timespec="seconds"),
         "source": "Yahoo Finance 日線與配息（yfinance）；股票清單：臺灣證券交易所 ISIN 公告／OpenAPI；成分股：MoneyDJ 0050／0051 全部持股",
         "stats": {
