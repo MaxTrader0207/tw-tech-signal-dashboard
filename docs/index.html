@@ -81,6 +81,7 @@ td.txt{text-align:left}
 .mabox.ma30{--ma:#f5b83d;--ma-bg:rgba(245,184,61,.08)}
 .mabox.ma60{--ma:#4da3ff;--ma-bg:rgba(77,163,255,.08)}
 .mabox.ma100{--ma:#b07cff;--ma-bg:rgba(176,124,255,.09)}
+.mabox.ma10{--ma:#2dd4bf;--ma-bg:rgba(45,212,191,.08)}
 .mabox.oscx{--ma:#22c7d6;--ma-bg:rgba(34,199,214,.08)}
 .mabox.osce{--ma:#ff8a3d;--ma-bg:rgba(255,138,61,.08)}
 .mabox.x3{--ma:#ff5fa2;--ma-bg:rgba(255,95,162,.10)}
@@ -236,6 +237,7 @@ footer{margin-top:26px;border-top:2px solid var(--line);padding-top:16px}
   </div>
   <div class="src">
     計算說明：MA 為收盤價簡單移動平均；RSI(6) 採三竹 Wilder 平滑法；MACD 採三竹公式，需求指數 DI＝(最高＋最低＋2×收盤)÷4，DIF＝EMA12(DI)−EMA26(DI)，MACD＝EMA9(DIF)，柱狀體 OSC＝DIF−MACD。
+    「MA10 強勢」（多方）為當日收盤高於 MA10、MA10 高於前一日，且當日最低價高於 MA10 × 1.02；此區塊不列入交集的均線類別。
     「黃金／死亡交叉」判定為前一日收盤 ≤／≥ 均線、當日收盤 ＞／＜ 均線，多方須發生於最近 1 個交易日（當日）、空方為最近 3 個交易日內；「上揚／下彎」為最新一日均線值高於／低於前一日。
     價格採 Yahoo 未還原除權息之收盤價（僅含股票分割調整）；台北時間 14:30 前不採用當日 K 棒。停牌、資料未達 110 個交易日或最新資料非當日之個股不列入。
     「新／連 N」以同一套資料逐日回推訊號連續出現的交易日數；「除息」為近 5 個交易日內依 Yahoo 配息與還原因子偵測，「⚠除息」表示改用還原權息價計算時該訊號不成立。20 日均量以 Yahoo 成交量換算張數。

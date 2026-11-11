@@ -8,10 +8,15 @@ const SC = {};
 
 /* ---------- 常數 ---------- */
 SC.MA_N = [30, 60, 100];
-SC.MA_COLOR = {30: '#f5b83d', 60: '#4da3ff', 100: '#b07cff'};
-SC.SIG_KEYS = ['maBull30', 'maBull60', 'maBull100', 'maBear30', 'maBear60', 'maBear100',
+SC.MA_COLOR = {10: '#2dd4bf', 30: '#f5b83d', 60: '#4da3ff', 100: '#b07cff'};
+/* 多方「MA10 強勢」：收盤 > MA10、MA10 上揚、最低價 > MA10 × 1.02；不列入交集的均線類別 */
+SC.MA10_TITLE = '收盤站上 MA10、MA10 上揚，且最低價 > MA10 × 1.02';
+SC.X_FAM_KEYS = ['maBull30', 'maBull60', 'maBull100', 'maBear30', 'maBear60', 'maBear100',
+  'rsiBull', 'rsiBear', 'macdBullCross', 'macdBullExp', 'macdBearCross', 'macdBearExp'];
+SC.SIG_KEYS = ['maBull10', 'maBull30', 'maBull60', 'maBull100', 'maBear30', 'maBear60', 'maBear100',
   'rsiBull', 'rsiBear', 'macdBullCross', 'macdBullExp', 'macdBearCross', 'macdBearExp'];
 SC.SIG_LABEL = {
+  maBull10: 'MA10 強勢',
   maBull30: '黃金交叉 MA30', maBull60: '黃金交叉 MA60', maBull100: '黃金交叉 MA100',
   maBear30: '死亡交叉 MA30', maBear60: '死亡交叉 MA60', maBear100: '死亡交叉 MA100',
   rsiBull: 'RSI(6) ≥ 80', rsiBear: 'RSI(6) ≤ 20',
@@ -19,6 +24,7 @@ SC.SIG_LABEL = {
   macdBearCross: 'OSC 翻負', macdBearExp: 'OSC 連 2 日減少',
 };
 SC.FILE_LABEL = {
+  maBull10: 'MA10_強勢（收盤站上、上揚、低點高於MA10_2%）',
   maBull30: 'MA30_黃金交叉', maBull60: 'MA60_黃金交叉', maBull100: 'MA100_黃金交叉',
   maBear30: 'MA30_死亡交叉', maBear60: 'MA60_死亡交叉', maBear100: 'MA100_死亡交叉',
   rsiBull: 'RSI6_80以上', rsiBear: 'RSI6_20以下',
@@ -177,7 +183,7 @@ SC.watchHits = results => results.filter(s => SC.watch.has(s.id) && Object.keys(
 /* ---------- 標記：自選、新增／連 N、除息 ---------- */
 SC.sideKeys = (s, key) => {
   const m = /^x(Bull|Bear)/.exec(key || '');
-  return m ? SC.SIG_KEYS.filter(k => k.includes(m[1]) && s.sig[k]) : (key ? [key] : []);
+  return m ? SC.X_FAM_KEYS.filter(k => k.includes(m[1]) && s.sig[k]) : (key ? [key] : []);
 };
 SC.streakOf = (s, key) => {
   if (!s.st) return null;

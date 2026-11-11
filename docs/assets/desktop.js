@@ -73,6 +73,12 @@ const maBox = (n, title, list, cols, key) => box(`ma${n}`, `MA${n}`, title, list
 function render(results) {
   BLOCKS = [];
   const {lists, xi} = SC.build(results);
+  const ma10Cols = [
+    {h: 'MA10', v: s => f2(s.ma[10])},
+    {h: '最低價', v: s => f2(s.sig.maBull10.low)},
+    {h: '低點距MA10', v: s => `<span class="up">+${s.sig.maBull10.gap.toFixed(2)}%</span>`},
+    {h: 'MA10斜率', v: s => `<span class="up">+${s.sig.maBull10.slope.toFixed(2)}</span>`},
+  ];
   const maCols = n => k => [
     {h: `MA${n}`, v: s => f2(s.ma[n])},
     {h: '交叉日', v: s => md(s.sig[k + n].date)},
@@ -98,7 +104,7 @@ function render(results) {
     ...(SC.watch.size ? [['⭐ 自選命中', SC.watchHits(results), '']] : []),
     ['交集多方', SC.xTotal(xi, 'Bull'), 'bull'],
     ['交集空方', SC.xTotal(xi, 'Bear'), 'bear'],
-    ['均線多方', uniq(['maBull30', 'maBull60', 'maBull100']), 'bull'],
+    ['均線多方', uniq(['maBull10', 'maBull30', 'maBull60', 'maBull100']), 'bull'],
     ['均線空方', uniq(['maBear30', 'maBear60', 'maBear100']), 'bear'],
     ['RSI 多方', lists.rsiBull.length, 'bull'],
     ['RSI 空方', lists.rsiBear.length, 'bear'],
@@ -122,10 +128,11 @@ function render(results) {
   <section class="ind">
     <h2>📈 均線指標</h2>
     <div class="def">日線收盤價與 30／60／100 日均線交叉（多方為最近 1 個交易日、空方近 3 個交易日內發生），並搭配均線方向</div>
-    <div class="malegend"><span><i style="background:#f5b83d"></i>MA30 短期</span><span><i style="background:#4da3ff"></i>MA60 中期</span><span><i style="background:#b07cff"></i>MA100 長期</span></div>
+    <div class="malegend"><span><i style="background:#2dd4bf"></i>MA10 強勢（多方）</span><span><i style="background:#f5b83d"></i>MA30 短期</span><span><i style="background:#4da3ff"></i>MA60 中期</span><span><i style="background:#b07cff"></i>MA100 長期</span></div>
     <div class="sides">
       <div class="side bull"><h3>▲ 多方板塊</h3>
         ${MA_N.map(n => maBox(n, `收盤價黃金交叉 MA${n}，且 MA${n} 上揚`, lists['maBull' + n], maCols(n)('maBull'), 'maBull' + n)).join('')}
+        ${box('ma10', 'MA10 強勢', SC.MA10_TITLE, lists.maBull10, ma10Cols, 'maBull10')}
       </div>
       <div class="side bear"><h3>▼ 空方板塊</h3>
         ${MA_N.map(n => maBox(n, `收盤價死亡交叉 MA${n}，且 MA${n} 下彎`, lists['maBear' + n], maCols(n)('maBear'), 'maBear' + n)).join('')}
@@ -191,14 +198,14 @@ function query() {
   };
   $('qResult').innerHTML = `<div class="tbl"><table><thead><tr>
       <th>代號</th><th>名稱</th><th>自選</th><th>市場</th><th>產業</th><th>收盤</th><th>漲跌幅</th><th>20日均量</th><th>上週週收／週MA10／週RSI6</th>
-      <th>MA30</th><th>MA60</th><th>MA100</th><th>RSI(6)</th><th>DIF</th><th>MACD</th><th>OSC</th><th style="text-align:left">命中訊號</th>
+      <th>MA10</th><th>MA30</th><th>MA60</th><th>MA100</th><th>RSI(6)</th><th>DIF</th><th>MACD</th><th>OSC</th><th style="text-align:left">命中訊號</th>
     </tr></thead><tbody>` +
     hits.map(s => `<tr${SC.watch.has(s.id) ? ' class="w"' : ''}>
       <td class="id">${esc(s.id)}</td><td>${SC.star(s)}${esc(s.name)}${s.ex ? SC.marks(s, '') : ''}</td>
       <td class="txt"><button class="sbtn${SC.watch.has(s.id) ? ' on' : ''}" data-star="${esc(s.id)}" title="加入／移除自選股">${SC.watch.has(s.id) ? '★' : '☆'}</button></td>
       <td class="txt">${MKT[s.mkt] || ''}</td><td class="txt">${esc(s.ind) || '—'}</td>
       <td class="num">${f2(s.close)}</td><td class="num">${pct(s.chg)}</td><td class="num">${s.v20 == null ? '—' : SC.int(s.v20) + ' 張'}</td><td class="num">${SC.wkCell(s)}</td>
-      <td class="num">${f2(s.ma[30])}</td><td class="num">${f2(s.ma[60])}</td><td class="num">${f2(s.ma[100])}</td>
+      <td class="num">${f2(s.ma[10])}</td><td class="num">${f2(s.ma[30])}</td><td class="num">${f2(s.ma[60])}</td><td class="num">${f2(s.ma[100])}</td>
       <td class="num">${f2(s.rsi)}</td><td class="num">${f2(s.dif)}</td><td class="num">${f2(s.macd)}</td>
       <td class="num"><b class="${s.osc[2] > 0 ? 'up' : 'dn'}">${f2(s.osc[2])}</b></td>
       <td class="txt" style="white-space:normal">${tags(s)}</td>
@@ -216,7 +223,8 @@ async function show(date) {
       `（未取得 ${st.no_data ?? 0}、資料不足 ${st.insufficient ?? 0}、非當日 ${st.stale ?? 0}）｜點選表格代號可查看個股明細` +
       (ver < 2 ? '｜⚠ 此日期為舊格式資料，均量篩選、除息與新增標記不適用' : ver < 3 ? '｜此日期資料尚無歷史回測' : '') +
       (ver < 4 ? '｜⚠ 此日期資料尚無週線資訊，週線濾網不適用' : ver < 5 ? '｜⚠ 此日期為舊版週線條件（多方：週收盤站上週MA10）'
-        : ver < 6 ? '｜⚠ 此日期為舊版週線條件（多方：週MA10上揚）' : ver < 7 ? '｜⚠ 此日期為舊版週線條件（多方：週RSI6>50，未含上揚）' : ver < 9 ? '｜⚠ 此日期資料的多方均線交叉為舊版視窗（非當日）' : '');
+        : ver < 6 ? '｜⚠ 此日期為舊版週線條件（多方：週MA10上揚）' : ver < 7 ? '｜⚠ 此日期為舊版週線條件（多方：週RSI6>50，未含上揚）' : ver < 9 ? '｜⚠ 此日期資料的多方均線交叉為舊版視窗（非當日）' : '') +
+      (ver < 10 ? '｜此日期資料尚無「MA10 強勢」' : '');
     $('btNote').innerHTML = cur.bt
       ? `<span>📊 歷史回測期間 ${SC.btPeriod(cur)}：訊號首日出現後持有 3／5／10／20 個交易日，多方看上漲機率、空方看下跌機率；<b style="color:var(--accent)">金色</b>＝高於同期全體個股基準 3 個百分點以上。回測結果隨「20 日均量」篩選切換。</span>`
       : '';

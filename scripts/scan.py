@@ -343,7 +343,7 @@ def r(x, n):
 def compact(a):
     sig = {}
     for k, v in a["sig"].items():
-        sig[k] = {"date": v["date"], "slope": r(v["slope"], 4)} if isinstance(v, dict) else True
+        sig[k] = {kk: (r(vv, 4) if isinstance(vv, float) else vv) for kk, vv in v.items()} if isinstance(v, dict) else True
     return {
         "date": a["date"], "close": r(a["close"], 4), "chg": r(a["chg"], 4), "vol": a["vol"],
         "ma": {k: r(v, 4) for k, v in a["ma"].items()},
@@ -519,7 +519,7 @@ def build_payload(stocks, prices, now):
     fresh.sort(key=lambda x: x["id"])
     return {
         "date": max_date,
-        "ver": 9,                       # …7：週RSI6>50 且上揚；8：多方交叉近 2 日；9：多方均線交叉改為當日（近 1 個交易日）
+        "ver": 10,                      # …8：多方交叉近 2 日；9：多方均線交叉當日；10：新增多方「MA10 強勢」maBull10
         "generated_at": now.isoformat(timespec="seconds"),
         "source": "Yahoo Finance 日線與配息（yfinance）；股票清單：臺灣證券交易所 ISIN 公告／OpenAPI",
         "stats": {

@@ -43,7 +43,7 @@ function blocksFor(t, B) {
   if (t === 'ma') return MA_N.map(n => ({
     key: `ma${B}${n}`, cls: `ma${n}`, badge: `MA${n}`, n, kind: 'ma', list: lists[`ma${B}${n}`],
     title: bull ? `收盤價黃金交叉，MA${n} 上揚` : `收盤價死亡交叉，MA${n} 下彎`,
-  }));
+  })).concat(bull ? [{key: 'maBull10', cls: 'ma10', badge: 'MA10 強勢', kind: 'ma10', list: lists.maBull10, title: SC.MA10_TITLE}] : []);
   if (t === 'rsi') return [{key: `rsi${B}`, cls: 'rsi', badge: 'RSI(6)', kind: 'rsi', list: lists[`rsi${B}`], title: bull ? 'RSI(6) ≥ 80' : 'RSI(6) ≤ 20'}];
   if (t === 'macd') return [
     {key: `macd${B}Cross`, cls: 'oscx', badge: '交叉', kind: 'macd', list: lists[`macd${B}Cross`], title: bull ? '柱狀體由 ≤0 轉 >0' : '柱狀體由 ≥0 轉 <0'},
@@ -55,6 +55,10 @@ const sideCount = (t, B) => SC.uniq(blocksFor(t, B).map(b => b.list));
 
 /* ---------- 卡片 ---------- */
 function metrics(b, s, B) {
+  if (b.kind === 'ma10') {
+    const g = s.sig.maBull10;
+    return `<span>MA10 <b>${f2(s.ma[10])}</b></span><span>最低 <b>${f2(g.low)}</b></span><span>低點距MA10 <b class="up">+${g.gap.toFixed(2)}%</b></span><span>斜率 <b class="up">+${g.slope.toFixed(2)}</b></span>`;
+  }
   if (b.kind === 'ma') {
     const g = s.sig[b.key];
     return `<span>MA${b.n} <b>${f2(s.ma[b.n])}</b></span><span>交叉 <b>${md(g.date)}</b></span><span>斜率 <b class="${cls(g.slope)}">${g.slope > 0 ? '+' : ''}${g.slope.toFixed(2)}</b></span>`;
@@ -181,7 +185,7 @@ function openSheet(id) {
     <div class="grid" style="margin-bottom:14px">${cell('週收盤', s.wk ? f2(s.wk.c) : '—', s.wk ? (s.wk.dn ? 'dn' : 'up') : '')}${cell('週 MA10', s.wk ? f2(s.wk.ma) + SC.wkArrow(s) : '—', s.wk && s.wk.mp != null ? (s.wk.ma > s.wk.mp ? 'up' : 'dn') : '')}${cell('前一週 MA10', s.wk && s.wk.mp != null ? f2(s.wk.mp) : '—')}
       ${cell('週 RSI(6)', s.wk && s.wk.r6 != null ? f2(s.wk.r6) + SC.r6Arrow(s) : '—', s.wk && s.wk.r6 != null ? (s.wk.r6 > 50 ? 'up' : 'dn') : '')}${cell('前一週 RSI(6)', s.wk && s.wk.rp != null ? f2(s.wk.rp) : '—')}${cell('多方條件', s.wk ? (SC.wkBull(s) ? '✓ R6>50且上揚' : s.wk.r6 != null && s.wk.r6 <= 50 ? '✗ R6≤50' : '✗ R6未上揚') : '—', s.wk ? (SC.wkBull(s) ? 'up' : '') : '')}${cell('空方條件', s.wk ? (s.wk.dn ? '✓ 收盤跌破' : '✗ 未跌破') : '—', s.wk ? (s.wk.dn ? 'dn' : '') : '')}</div>
     <div class="sec">均線</div>
-    <div class="grid">${MA_N.map(n => cell('MA' + n, f2(s.ma[n]), s.close > s.ma[n] ? 'up' : 'dn')).join('')}</div>
+    <div class="grid">${[10, ...MA_N].filter(n => s.ma[n] != null).map(n => cell('MA' + n, f2(s.ma[n]), s.close > s.ma[n] ? 'up' : 'dn')).join('')}</div>
     <div class="sec">RSI ／ MACD</div>
     <div class="grid">${cell('RSI(6)', f2(s.rsi), s.rsi >= 80 ? 'up' : s.rsi <= 20 ? 'dn' : '')}${cell('DIF', f2(s.dif))}${cell('MACD', f2(s.macd))}
       ${cell('OSC 前2日', f2(s.osc[0]), cls(s.osc[0]))}${cell('OSC 前1日', f2(s.osc[1]), cls(s.osc[1]))}${cell('OSC 今日', f2(s.osc[2]), cls(s.osc[2]))}</div>
@@ -214,8 +218,9 @@ window.addEventListener('popstate', () => closeSheet(true));
 /* ---------- 輸出 ---------- */
 function exportCsv(b) {
   const B = side, sideTxt = B === 'Bull' ? '多方' : '空方';
-  const extraH = {ma: [`MA${b.n}`, '交叉日', '均線斜率'], rsi: ['RSI(6)'], macd: ['OSC 前2日', 'OSC 前1日', 'OSC 今日', 'DIF', 'MACD'], x: ['均線', 'RSI(6)', 'MACD', '訊號']}[b.kind];
-  const extra = s => b.kind === 'ma' ? [f2(s.ma[b.n]), md(s.sig[b.key].date), s.sig[b.key].slope.toFixed(2)]
+  const extraH = {ma10: ['MA10', '最低價', '低點距MA10(%)', 'MA10斜率'], ma: [`MA${b.n}`, '交叉日', '均線斜率'], rsi: ['RSI(6)'], macd: ['OSC 前2日', 'OSC 前1日', 'OSC 今日', 'DIF', 'MACD'], x: ['均線', 'RSI(6)', 'MACD', '訊號']}[b.kind];
+  const extra = s => b.kind === 'ma10' ? [f2(s.ma[10]), f2(s.sig.maBull10.low), s.sig.maBull10.gap.toFixed(2), s.sig.maBull10.slope.toFixed(2)]
+    : b.kind === 'ma' ? [f2(s.ma[b.n]), md(s.sig[b.key].date), s.sig[b.key].slope.toFixed(2)]
     : b.kind === 'rsi' ? [f2(s.rsi)]
     : b.kind === 'macd' ? [f2(s.osc[0]), f2(s.osc[1]), f2(s.osc[2]), f2(s.dif), f2(s.macd)]
     : [SC.fam(s, B).ma.join(' '), f2(s.rsi), SC.macdTxt(s, B), SC.hitCnt(s, B)];
@@ -279,7 +284,8 @@ async function show(date) {
     $('meta').textContent = `資料日期 ${cur.date}｜有效 ${st.scanned ?? cur.stocks.length} 檔｜更新 ${gt}` +
       (ver < 2 ? '｜⚠ 舊格式資料，均量／除息／新增標記不適用' : ver < 3 ? '｜此日期尚無歷史回測' : '') +
       (ver < 4 ? '｜⚠ 尚無週線資訊，週線濾網不適用' : ver < 5 ? '｜⚠ 舊版週線條件（多方：週收站上週MA10）'
-        : ver < 6 ? '｜⚠ 舊版週線條件（多方：週MA10上揚）' : ver < 7 ? '｜⚠ 舊版週線條件（多方：週RSI6>50）' : ver < 9 ? '｜⚠ 多方均線交叉為舊版視窗（舊資料）' : '');
+        : ver < 6 ? '｜⚠ 舊版週線條件（多方：週MA10上揚）' : ver < 7 ? '｜⚠ 舊版週線條件（多方：週RSI6>50）' : ver < 9 ? '｜⚠ 多方均線交叉為舊版視窗（舊資料）' : '') +
+      (ver < 10 ? '｜尚無「MA10 強勢」' : '');
     fillIndustries(); refilter();
   } catch (e) { $('err').textContent = `無法載入 ${date} 的資料：${e.message}`; }
 }
