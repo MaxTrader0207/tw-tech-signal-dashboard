@@ -6,21 +6,11 @@ jobs:
     steps:
       - run: |
           UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
-          for u in \
-            "https://www.moneydj.com/ETF/X/Basic/Basic0007.xdjhtm?etfid=0050.TW" \
-            "https://www.moneydj.com/ETF/X/Basic/Basic0007.xdjhtm?etfid=0051.TW" \
-            "https://www.yuantaetfs.com/api/StkWeights?date=&fundid=1066" \
-            "https://www.yuantaetfs.com/tradeInfo/pcf/0050" \
-            "https://openapi.twse.com.tw/v1/opendata/t187ap03_L" \
-            "https://www.taiwanindex.com.tw/indexes/t00" ; do
-            echo "=== $u"; curl -sSL -m 30 -A "$UA" -o out.bin -w "HTTP %{http_code} %{size_download}B %{content_type}\n" "$u" || true
-            python3 - <<'PY'
-          import re
-          b=open('out.bin','rb').read(); 
-          for enc in ('utf-8','big5','cp950'):
-              try: t=b.decode(enc); break
-              except Exception: t=b.decode('utf-8','ignore')
-          codes=re.findall(r'\b(\d{4})\.TW\b|>(\d{4})<|"(\d{4})"',t)
-          print('codes-like:',len(codes)); i=t.find('2330'); print(repr(t[max(0,i-300):i+300]) if i>=0 else 'no 2330'); 
-          PY
-          done
+          for e in 0050 0051; do for pg in Basic0007 Basic0007B Basic0007b; do
+            u="https://www.moneydj.com/ETF/X/Basic/$pg.xdjhtm?etfid=$e.TW"; echo "=== $u"
+            curl -sSL -m 30 -A "$UA" -o out.bin -w "HTTP %{http_code} %{size_download}B\n" "$u" || true
+            python3 -c "
+          import re;t=open('out.bin','rb').read().decode('utf-8','ignore')
+          c=re.findall(r'>([^<>]{1,20})\((\d{4,6}[A-Z]?)\.(TW|TWO)\)<',t); print('n',len(c),'uniq',len(set(x[1] for x in c)),c[:3],c[-3:])
+          m=re.search(r'資料日期[^0-9]{0,40}([0-9/]{8,10})',t); print('date',m.group(1) if m else None)"
+          done; done
