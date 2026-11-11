@@ -23,7 +23,7 @@ import requests
 import yfinance as yf
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from indicators import MA_N, MIN_BARS, analyze, last_week_state, signal_series, weekly_series, wk_bull, x_group  # noqa: E402
+from indicators import MA_N, MIN_BARS, analyze, last_week_state, signal_series, weekly_series, wk_bear, wk_bull, x_group  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "docs" / "data"
@@ -419,7 +419,7 @@ class Backtest:
         self._v20 = array("d")                               # 事件當日 20 日均量（張）
         self._ret = {h: array("d") for h in HORIZONS}       # 持有 h 日報酬，超出資料範圍為 NaN
         self._wb = bytearray()                               # 多方週線條件：上週週收盤 > 週MA30 且週MACD柱 > 0
-        self._wd = bytearray()                               # 空方週線條件：上週週收盤跌破週 MA10
+        self._wd = bytearray()                               # 空方週線條件：上週週收盤跌破週 MA30
         self.ev = {}                                         # 訊號 key -> 基準樣本索引 array("l")
         self.d0, self.d1 = None, None
 
@@ -447,7 +447,7 @@ class Backtest:
                 self._ret[h].append(px[i + h] / px[i] - 1 if i + h < L else nan)
             ws = last_week_state(wk_of_row, weeks, i)
             self._wb.append(1 if wk_bull(ws) else 0)
-            self._wd.append(1 if ws and ws[0] < ws[1] else 0)
+            self._wd.append(1 if wk_bear(ws) else 0)
             events = list(fi - fp)
             for side in ("Bull", "Bear"):
                 g = x_group(fi, side)
@@ -462,7 +462,7 @@ class Backtest:
 
     def _stats(self, idx, t, h, bull=None, weekly=False):
         """idx＝事件樣本索引（None 表示基準＝全部樣本）。
-        weekly=True：多方只取上週週收盤站上週 MA30 且週 MACD 柱狀體 > 0 的事件，空方只取上週週收盤跌破週 MA10 的事件。"""
+        weekly=True：多方只取上週週收盤站上週 MA30 且週 MACD 柱狀體 > 0 的事件，空方只取上週週收盤跌破週 MA30 的事件。"""
         v20, r = self.V20, self.R[h]
         if idx is not None:
             v20, r = v20[idx], r[idx]
@@ -524,10 +524,10 @@ def build_payload(stocks, prices, now):
         bt.add(srows, flags)
         wk_of_row, weeks = weekly_series(srows)
         ws = last_week_state(wk_of_row, weeks, len(srows) - 1)
-        if ws:   # 多方條件＝上週週收盤 > 週 MA30 且週 MACD 柱 > 0；空方條件＝上週週收盤跌破週 MA10
+        if ws:   # 多方條件＝上週週收盤 > 週 MA30 且週 MACD 柱 > 0；空方條件＝上週週收盤跌破週 MA30
             item["wk"] = {"d": ws[2], "o": r(ws[7], 4), "c": r(ws[0], 4), "ma": r(ws[1], 4), "mp": r(ws[3], 4),
                           "ma30": r(ws[8], 4), "r6": r(ws[4], 2), "rp": r(ws[5], 2), "osc": r(ws[6], 4),
-                          "rise": ws[1] > ws[3], "bull": wk_bull(ws), "dn": ws[0] < ws[1]}
+                          "rise": ws[1] > ws[3], "bull": wk_bull(ws), "dn": wk_bear(ws)}
         if a["sig"]:
             item["st"] = streaks(flags, list(a["sig"]))
         ex = ex_dividend(rows)
@@ -549,7 +549,7 @@ def build_payload(stocks, prices, now):
     fresh.sort(key=lambda x: x["id"])
     return {
         "date": max_date,
-        "ver": 14,                      # …10：新增 maBull10；11：週MACD柱>0；12：多方週線條件改為週K收紅且站上週MA30；13：移除 maBull10、多方週線條件改為週收站上週MA30；14：多方再加週MACD柱>0
+        "ver": 15,                      # …10：新增 maBull10；11：週MACD柱>0；12：多方週線條件改為週K收紅且站上週MA30；13：移除 maBull10、多方週線條件改為週收站上週MA30；14：多方再加週MACD柱>0；15：空方改為週收跌破週MA30
         "generated_at": now.isoformat(timespec="seconds"),
         "source": "Yahoo Finance 日線與配息（yfinance）；股票清單：臺灣證券交易所 ISIN 公告／OpenAPI",
         "stats": {
