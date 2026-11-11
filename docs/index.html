@@ -81,7 +81,6 @@ td.txt{text-align:left}
 .mabox.ma30{--ma:#f5b83d;--ma-bg:rgba(245,184,61,.08)}
 .mabox.ma60{--ma:#4da3ff;--ma-bg:rgba(77,163,255,.08)}
 .mabox.ma100{--ma:#b07cff;--ma-bg:rgba(176,124,255,.09)}
-.mabox.ma10{--ma:#2dd4bf;--ma-bg:rgba(45,212,191,.08)}
 .mabox.oscx{--ma:#22c7d6;--ma-bg:rgba(34,199,214,.08)}
 .mabox.osce{--ma:#ff8a3d;--ma-bg:rgba(255,138,61,.08)}
 .mabox.x3{--ma:#ff5fa2;--ma-bg:rgba(255,95,162,.10)}
@@ -193,7 +192,7 @@ footer{margin-top:26px;border-top:2px solid var(--line);padding-top:16px}
     </div>
     <label class="chk"><input type="checkbox" id="exx"> 排除除息影響訊號</label>
     <label class="chk"><input type="checkbox" id="newOnly"> 只看今日新增訊號</label>
-    <label class="chk" title="多方區塊：上週週K收紅（週收盤 > 週開盤）且上週週收盤 > 上週週線 30MA；空方區塊：上週週線收盤跌破上週週線 10MA"><input type="checkbox" id="wkF" checked> 週線濾網（多：週K收紅且站上週MA30／空：週收跌破週MA10）</label>
+    <label class="chk" title="多方區塊：上週週收盤 > 上週週線 30MA；空方區塊：上週週線收盤跌破上週週線 10MA"><input type="checkbox" id="wkF" checked> 週線濾網（多：週收站上週MA30／空：週收跌破週MA10）</label>
   </div>
   <div class="legend">
     <span>標記：</span>
@@ -237,11 +236,10 @@ footer{margin-top:26px;border-top:2px solid var(--line);padding-top:16px}
   </div>
   <div class="src">
     計算說明：MA 為收盤價簡單移動平均；RSI(6) 採三竹 Wilder 平滑法；MACD 採三竹公式，需求指數 DI＝(最高＋最低＋2×收盤)÷4，DIF＝EMA12(DI)−EMA26(DI)，MACD＝EMA9(DIF)，柱狀體 OSC＝DIF−MACD。
-    「MA10 強勢」（多方）為當日收盤高於 MA10、MA10 高於前一日，且當日最低價高於 MA10 × 1.02；此區塊不列入交集的均線類別。
     「黃金／死亡交叉」判定為前一日收盤 ≤／≥ 均線、當日收盤 ＞／＜ 均線，多方須發生於最近 1 個交易日（當日）、空方為最近 3 個交易日內；「上揚／下彎」為最新一日均線值高於／低於前一日。
     價格採 Yahoo 未還原除權息之收盤價（僅含股票分割調整）；台北時間 14:30 前不採用當日 K 棒。停牌、資料未達 110 個交易日或最新資料非當日之個股不列入。
     「新／連 N」以同一套資料逐日回推訊號連續出現的交易日數；「除息」為近 5 個交易日內依 Yahoo 配息與還原因子偵測，「⚠除息」表示改用還原權息價計算時該訊號不成立。20 日均量以 Yahoo 成交量換算張數。
-    「週線濾網」開啟時，多方區塊另需上週週K收紅（週收盤高於週開盤，週開盤取該週第一個交易日開盤價）且上週週收盤高於上週週線 30MA（近 30 週週收盤平均），空方區塊另需上週週線收盤（該週最後交易日收盤）跌破上週週線 10MA（近 10 週週收盤平均）；週線依週一至週日分組。
+    「週線濾網」開啟時，多方區塊另需上週週收盤高於上週週線 30MA（近 30 週週收盤平均），空方區塊另需上週週線收盤（該週最後交易日收盤）跌破上週週線 10MA（近 10 週週收盤平均）；週線依週一至週日分組。
     「歷史回測」統計 2024 年 1 月起每個訊號首日出現後持有 3／5／10／20 個交易日的表現（以還原權息價計算），依事件當日的 20 日均量分組、隨上方均量篩選切換；多方看上漲機率、空方看下跌機率，金色表示比同期全體個股基準高 3 個百分點以上。回測不含交易成本，過去表現不代表未來。
   </div>
   <div class="warn">

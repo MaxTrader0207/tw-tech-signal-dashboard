@@ -8,15 +8,12 @@ const SC = {};
 
 /* ---------- 常數 ---------- */
 SC.MA_N = [30, 60, 100];
-SC.MA_COLOR = {10: '#2dd4bf', 30: '#f5b83d', 60: '#4da3ff', 100: '#b07cff'};
-/* 多方「MA10 強勢」：收盤 > MA10、MA10 上揚、最低價 > MA10 × 1.02；不列入交集的均線類別 */
-SC.MA10_TITLE = '收盤站上 MA10、MA10 上揚，且最低價 > MA10 × 1.02';
+SC.MA_COLOR = {30: '#f5b83d', 60: '#4da3ff', 100: '#b07cff'};
 SC.X_FAM_KEYS = ['maBull30', 'maBull60', 'maBull100', 'maBear30', 'maBear60', 'maBear100',
   'rsiBull', 'rsiBear', 'macdBullCross', 'macdBullExp', 'macdBearCross', 'macdBearExp'];
-SC.SIG_KEYS = ['maBull10', 'maBull30', 'maBull60', 'maBull100', 'maBear30', 'maBear60', 'maBear100',
+SC.SIG_KEYS = ['maBull30', 'maBull60', 'maBull100', 'maBear30', 'maBear60', 'maBear100',
   'rsiBull', 'rsiBear', 'macdBullCross', 'macdBullExp', 'macdBearCross', 'macdBearExp'];
 SC.SIG_LABEL = {
-  maBull10: 'MA10 強勢',
   maBull30: '黃金交叉 MA30', maBull60: '黃金交叉 MA60', maBull100: '黃金交叉 MA100',
   maBear30: '死亡交叉 MA30', maBear60: '死亡交叉 MA60', maBear100: '死亡交叉 MA100',
   rsiBull: 'RSI(6) ≥ 80', rsiBear: 'RSI(6) ≤ 20',
@@ -24,7 +21,6 @@ SC.SIG_LABEL = {
   macdBearCross: 'OSC 翻負', macdBearExp: 'OSC 連 2 日減少',
 };
 SC.FILE_LABEL = {
-  maBull10: 'MA10_強勢（收盤站上、上揚、低點高於MA10_2%）',
   maBull30: 'MA30_黃金交叉', maBull60: 'MA60_黃金交叉', maBull100: 'MA100_黃金交叉',
   maBear30: 'MA30_死亡交叉', maBear60: 'MA60_死亡交叉', maBear100: 'MA100_死亡交叉',
   rsiBull: 'RSI6_80以上', rsiBear: 'RSI6_20以下',
@@ -109,7 +105,7 @@ SC.macdTxt = (s, B) => SC.fam(s, B).macd.map(t => t === 'Cross' ? (B === 'Bull' 
 
 /* ---------- 篩選 ----------
  * o = {mkt, ind, v20, exx, nw, watchOnly, wk, wkStrict}
- *   wk：週線濾網——多方訊號需上週週K收紅（週收 > 週開）且週收盤 > 週 MA30，空方訊號需上週週收盤跌破上週週 MA10
+ *   wk：週線濾網——多方訊號需上週週收盤 > 上週週 MA30，空方訊號需上週週收盤跌破上週週 MA10
  *   wkStrict：資料有週線欄位（ver ≥ 4）時，缺週線資料的個股不保留訊號
  * 回傳的個股物件 sig 已依「排除除息影響／只看新增」過濾（原物件不變）。 */
 SC.filter = (stocks, o) => {
@@ -136,10 +132,10 @@ SC.filter = (stocks, o) => {
 };
 
 /* ---------- 週線 ---------- */
-// 多方週線條件：上週週K收紅且週收盤 > 週MA30（ver 12）；舊資料沿用當時產生的 bull／rise／up
+// 多方週線條件：上週週收盤 > 週MA30（ver 13）；舊資料沿用當時產生的 bull／rise／up
 SC.wkBull = s => !!s.wk && (s.wk.bull != null ? s.wk.bull : s.wk.rise != null ? s.wk.rise : !!s.wk.up);
 SC.wkPass = (s, B) => !!(s.wk && (B === 'Bull' ? SC.wkBull(s) : s.wk.dn));
-SC.wkSfx = key => /Bull/.test(key) ? '＋上週週K收紅且站上週MA30' : '＋上週週線跌破週MA10';
+SC.wkSfx = key => /Bull/.test(key) ? '＋上週週收盤站上週MA30' : '＋上週週線跌破週MA10';
 SC.wkRed = s => !!s.wk && s.wk.o != null && s.wk.c > s.wk.o;
 SC.wkAbove30 = s => !!s.wk && s.wk.ma30 != null && s.wk.c > s.wk.ma30;
 SC.r6Arrow = s => s.wk && s.wk.rp != null ? (s.wk.r6 > s.wk.rp ? '↑' : s.wk.r6 < s.wk.rp ? '↓' : '→') : '';

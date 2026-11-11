@@ -73,12 +73,6 @@ const maBox = (n, title, list, cols, key) => box(`ma${n}`, `MA${n}`, title, list
 function render(results) {
   BLOCKS = [];
   const {lists, xi} = SC.build(results);
-  const ma10Cols = [
-    {h: 'MA10', v: s => f2(s.ma[10])},
-    {h: '最低價', v: s => f2(s.sig.maBull10.low)},
-    {h: '低點距MA10', v: s => `<span class="up">+${s.sig.maBull10.gap.toFixed(2)}%</span>`},
-    {h: 'MA10斜率', v: s => `<span class="up">+${s.sig.maBull10.slope.toFixed(2)}</span>`},
-  ];
   const maCols = n => k => [
     {h: `MA${n}`, v: s => f2(s.ma[n])},
     {h: '交叉日', v: s => md(s.sig[k + n].date)},
@@ -104,7 +98,7 @@ function render(results) {
     ...(SC.watch.size ? [['⭐ 自選命中', SC.watchHits(results), '']] : []),
     ['交集多方', SC.xTotal(xi, 'Bull'), 'bull'],
     ['交集空方', SC.xTotal(xi, 'Bear'), 'bear'],
-    ['均線多方', uniq(['maBull10', 'maBull30', 'maBull60', 'maBull100']), 'bull'],
+    ['均線多方', uniq(['maBull30', 'maBull60', 'maBull100']), 'bull'],
     ['均線空方', uniq(['maBear30', 'maBear60', 'maBear100']), 'bear'],
     ['RSI 多方', lists.rsiBull.length, 'bull'],
     ['RSI 空方', lists.rsiBear.length, 'bear'],
@@ -128,11 +122,10 @@ function render(results) {
   <section class="ind">
     <h2>📈 均線指標</h2>
     <div class="def">日線收盤價與 30／60／100 日均線交叉（多方為最近 1 個交易日、空方近 3 個交易日內發生），並搭配均線方向</div>
-    <div class="malegend"><span><i style="background:#2dd4bf"></i>MA10 強勢（多方）</span><span><i style="background:#f5b83d"></i>MA30 短期</span><span><i style="background:#4da3ff"></i>MA60 中期</span><span><i style="background:#b07cff"></i>MA100 長期</span></div>
+    <div class="malegend"><span><i style="background:#f5b83d"></i>MA30 短期</span><span><i style="background:#4da3ff"></i>MA60 中期</span><span><i style="background:#b07cff"></i>MA100 長期</span></div>
     <div class="sides">
       <div class="side bull"><h3>▲ 多方板塊</h3>
         ${MA_N.map(n => maBox(n, `收盤價黃金交叉 MA${n}，且 MA${n} 上揚`, lists['maBull' + n], maCols(n)('maBull'), 'maBull' + n)).join('')}
-        ${box('ma10', 'MA10 強勢', SC.MA10_TITLE, lists.maBull10, ma10Cols, 'maBull10')}
       </div>
       <div class="side bear"><h3>▼ 空方板塊</h3>
         ${MA_N.map(n => maBox(n, `收盤價死亡交叉 MA${n}，且 MA${n} 下彎`, lists['maBear' + n], maCols(n)('maBear'), 'maBear' + n)).join('')}
@@ -224,8 +217,7 @@ async function show(date) {
       (ver < 2 ? '｜⚠ 此日期為舊格式資料，均量篩選、除息與新增標記不適用' : ver < 3 ? '｜此日期資料尚無歷史回測' : '') +
       (ver < 4 ? '｜⚠ 此日期資料尚無週線資訊，週線濾網不適用' : ver < 5 ? '｜⚠ 此日期為舊版週線條件（多方：週收盤站上週MA10）'
         : ver < 6 ? '｜⚠ 此日期為舊版週線條件（多方：週MA10上揚）' : ver < 7 ? '｜⚠ 此日期為舊版週線條件（多方：週RSI6>50，未含上揚）' : ver < 9 ? '｜⚠ 此日期資料的多方均線交叉為舊版視窗（非當日）' : '') +
-      (ver < 10 ? '｜此日期資料尚無「MA10 強勢」' : '') +
-      (ver >= 4 && ver < 12 ? '｜⚠ 此日期為舊版多方週線條件（非週K收紅且站上週MA30）' : '');
+      (ver >= 4 && ver < 13 ? '｜⚠ 此日期為舊版多方週線條件（非週收站上週MA30）' : '');
     $('btNote').innerHTML = cur.bt
       ? `<span>📊 歷史回測期間 ${SC.btPeriod(cur)}：訊號首日出現後持有 3／5／10／20 個交易日，多方看上漲機率、空方看下跌機率；<b style="color:var(--accent)">金色</b>＝高於同期全體個股基準 3 個百分點以上。回測結果隨「20 日均量」篩選切換。</span>`
       : '';

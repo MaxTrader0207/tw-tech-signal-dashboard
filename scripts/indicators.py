@@ -9,15 +9,6 @@ EMA  ：α = 2/(n+1)，以首筆值為起始
 MA_N = (30, 60, 100)
 CROSS_WIN_BULL = 1   # 多方：收盤黃金交叉均線需發生於最近 1 個交易日（當日）
 CROSS_WIN_BEAR = 3   # 空方：收盤死亡交叉均線需發生於近 3 個交易日內
-MA10_N = 10          # 多方「MA10 強勢」：收盤 > MA10、MA10 上揚、最低價 > MA10 × MA10_GAP
-MA10_GAP = 1.02
-
-
-def ma10_strong(c, l, m10, i):
-    """第 i 日是否符合 MA10 強勢：收盤 > MA10、MA10 高於前一日、最低價 > MA10 × 1.02。"""
-    if i < 1 or m10[i] is None or m10[i - 1] is None:
-        return False
-    return c[i] > m10[i] and m10[i] > m10[i - 1] and l[i] > m10[i] * MA10_GAP
 MIN_BARS = 110
 
 
@@ -99,13 +90,10 @@ def signal_series(rows):
     h = [float(r["high"]) for r in rows]
     l = [float(r["low"]) for r in rows]
     mas = {n: sma(c, n) for n in MA_N}
-    m10 = sma(c, MA10_N)
     r6 = rsi(c, 6)
     _, _, osc = macd(h, l, c)
     for i in range(MIN_BARS - 1, L):
         s = set()
-        if ma10_strong(c, l, m10, i):
-            s.add("maBull10")
         for n, m in mas.items():
             gx = dx = False
             for j in range(i, i - max(CROSS_WIN_BULL, CROSS_WIN_BEAR), -1):
@@ -203,8 +191,8 @@ def last_week_state(wk_of_row, weeks, i):
 
 
 def wk_bull(ws):
-    """多方週線條件：上週週K收紅（週收盤 > 週開盤）且週收盤 > 週 MA30。"""
-    return bool(ws) and ws[0] > ws[7] and ws[8] is not None and ws[0] > ws[8]
+    """多方週線條件：上週週收盤 > 上週週 MA30。"""
+    return bool(ws) and ws[8] is not None and ws[0] > ws[8]
 
 
 def x_group(sigs, side):
@@ -261,12 +249,6 @@ def analyze(rows):
             res["sig"][f"maBull{n}"] = {"date": gx, "slope": slope}
         if dx and slope < 0:
             res["sig"][f"maBear{n}"] = {"date": dx, "slope": slope}
-
-    m10 = sma(c, MA10_N)
-    res["ma"][str(MA10_N)] = m10[last]
-    if ma10_strong(c, l, m10, last):
-        res["sig"]["maBull10"] = {"date": rows[last]["date"], "slope": m10[last] - m10[last - 1],
-                                  "low": l[last], "gap": (l[last] / m10[last] - 1) * 100}
 
     r6 = rsi(c, 6)
     res["rsi"] = r6[last]
