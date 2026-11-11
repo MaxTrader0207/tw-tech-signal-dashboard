@@ -10,8 +10,15 @@ MA_N = (30, 60, 100)
 CROSS_WIN_BULL = 1   # 多方：收盤黃金交叉均線需發生於最近 1 個交易日（當日）
 CROSS_WIN_BEAR = 3   # 空方：收盤死亡交叉均線需發生於近 3 個交易日內
 MIN_BARS = 110
+RSI_MOM = (50, 70)   # 多方「RSI 動能」：上週週 RSI6 > 50、當日日線 RSI6 > 70 且高於前一日
 BOX_N = 20           # 多方「箱型突破」：前 BOX_N 個交易日（約一個月，不含當日）為整理區間
 BOX_RANGE = 0.15     # 整理區間：區間最高價 ÷ 最低價 − 1 ≤ 15%
+
+
+def rsi_mom(r6, i, wr6):
+    """第 i 日是否 RSI 動能：上週週 RSI6（wr6）> 50，日線 RSI6 > 70 且較前一日上揚。"""
+    return (i >= 1 and r6[i] is not None and r6[i - 1] is not None and wr6 is not None
+            and wr6 > RSI_MOM[0] and r6[i] > RSI_MOM[1] and r6[i] > r6[i - 1])
 
 
 def box_break(c, h, l, i):
@@ -105,10 +112,14 @@ def signal_series(rows):
     mas = {n: sma(c, n) for n in MA_N}
     r6 = rsi(c, 6)
     _, _, osc = macd(h, l, c)
+    wk_of_row, weeks = weekly_series(rows)
     for i in range(MIN_BARS - 1, L):
         s = set()
         if box_break(c, h, l, i):
             s.add("boxBull")
+        ws = last_week_state(wk_of_row, weeks, i)
+        if rsi_mom(r6, i, ws[4] if ws else None):
+            s.add("rsiBullMom")
         for n, m in mas.items():
             gx = dx = False
             for j in range(i, i - max(CROSS_WIN_BULL, CROSS_WIN_BEAR), -1):
@@ -281,6 +292,10 @@ def analyze(rows):
         res["sig"]["rsiBull"] = True
     if res["rsi"] <= 20:
         res["sig"]["rsiBear"] = True
+    wk_of_row, weeks = weekly_series(rows)
+    ws = last_week_state(wk_of_row, weeks, last)
+    if rsi_mom(r6, last, ws[4] if ws else None):
+        res["sig"]["rsiBullMom"] = {"rp": r6[last - 1], "wr": ws[4]}
 
     dif, sig, osc = macd(h, l, c)
     o0, o1, o2 = osc[last], osc[last - 1], osc[last - 2]

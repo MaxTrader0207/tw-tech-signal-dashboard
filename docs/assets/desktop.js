@@ -87,6 +87,11 @@ function render(results) {
     {h: '均線斜率', v: s => `<span class="${s.sig[k + n].slope > 0 ? 'up' : 'dn'}">${s.sig[k + n].slope > 0 ? '+' : ''}${s.sig[k + n].slope.toFixed(2)}</span>`},
   ];
   const rsiCols = [{h: 'RSI(6)', v: s => f2(s.rsi)}];
+  const momCols = [
+    {h: 'RSI(6)', v: s => `<span class="up">${f2(s.rsi)}</span>`},
+    {h: '前日 RSI', v: s => f2(s.sig.rsiBullMom.rp)},
+    {h: '上週週 RSI', v: s => f2(s.sig.rsiBullMom.wr)},
+  ];
   const oscCols = [
     {h: 'OSC 前2日', v: s => f2(s.osc[0])},
     {h: 'OSC 前1日', v: s => f2(s.osc[1])},
@@ -108,7 +113,7 @@ function render(results) {
     ['交集空方', SC.xTotal(xi, 'Bear'), 'bear'],
     ['均線多方', uniq(['maBull30', 'maBull60', 'maBull100', 'boxBull']), 'bull'],
     ['均線空方', uniq(['maBear30', 'maBear60', 'maBear100']), 'bear'],
-    ['RSI 多方', lists.rsiBull.length, 'bull'],
+    ['RSI 多方', uniq(['rsiBull', 'rsiBullMom']), 'bull'],
     ['RSI 空方', lists.rsiBear.length, 'bear'],
     ['MACD 多方', uniq(['macdBullCross', 'macdBullExp']), 'bull'],
     ['MACD 空方', uniq(['macdBearCross', 'macdBearExp']), 'bear'],
@@ -146,7 +151,7 @@ function render(results) {
     <h2>⚡ RSI 指標</h2>
     <div class="def">RSI 參數 6，日線收盤</div>
     <div class="sides">
-      <div class="side bull"><h3>▲ 多方板塊</h3>${cond('RSI(6) ≥ 80', lists.rsiBull, rsiCols, 'rsiBull')}</div>
+      <div class="side bull"><h3>▲ 多方板塊</h3>${cond('RSI(6) ≥ 80', lists.rsiBull, rsiCols, 'rsiBull')}${cond('RSI 動能：' + SC.MOM_TITLE, lists.rsiBullMom, momCols, 'rsiBullMom')}</div>
       <div class="side bear"><h3>▼ 空方板塊</h3>${cond('RSI(6) ≤ 20', lists.rsiBear, rsiCols, 'rsiBear')}</div>
     </div>
   </section>

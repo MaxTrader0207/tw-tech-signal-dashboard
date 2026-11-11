@@ -46,7 +46,8 @@ function blocksFor(t, B) {
     key: `ma${B}${n}`, cls: `ma${n}`, badge: `MA${n}`, n, kind: 'ma', list: lists[`ma${B}${n}`],
     title: bull ? `收盤價黃金交叉，MA${n} 上揚` : `收盤價死亡交叉，MA${n} 下彎`,
   })).concat(bull ? [{key: 'boxBull', cls: 'box', badge: '箱型突破', kind: 'box', list: lists.boxBull, title: SC.BOX_TITLE}] : []);
-  if (t === 'rsi') return [{key: `rsi${B}`, cls: 'rsi', badge: 'RSI(6)', kind: 'rsi', list: lists[`rsi${B}`], title: bull ? 'RSI(6) ≥ 80' : 'RSI(6) ≤ 20'}];
+  if (t === 'rsi') return [{key: `rsi${B}`, cls: 'rsi', badge: 'RSI(6)', kind: 'rsi', list: lists[`rsi${B}`], title: bull ? 'RSI(6) ≥ 80' : 'RSI(6) ≤ 20'}]
+    .concat(bull ? [{key: 'rsiBullMom', cls: 'rsi', badge: 'RSI 動能', kind: 'mom', list: lists.rsiBullMom, title: SC.MOM_TITLE}] : []);
   if (t === 'macd') return [
     {key: `macd${B}Cross`, cls: 'oscx', badge: '交叉', kind: 'macd', list: lists[`macd${B}Cross`], title: bull ? '柱狀體由 ≤0 轉 >0' : '柱狀體由 ≥0 轉 <0'},
     {key: `macd${B}Exp`, cls: 'osce', badge: '動能', kind: 'macd', list: lists[`macd${B}Exp`], title: bull ? '柱狀體 >0 且連 2 日放大' : '柱狀體 <0 且連 2 日減少'},
@@ -65,6 +66,7 @@ function metrics(b, s, B) {
     const g = s.sig[b.key];
     return `<span>MA${b.n} <b>${f2(s.ma[b.n])}</b></span><span>交叉 <b>${md(g.date)}</b></span><span>斜率 <b class="${cls(g.slope)}">${g.slope > 0 ? '+' : ''}${g.slope.toFixed(2)}</b></span>`;
   }
+  if (b.kind === 'mom') return `<span>RSI(6) <b class="up">${f2(s.rsi)}</b></span><span>前日 <b>${f2(s.sig.rsiBullMom.rp)}</b></span><span>週RSI <b>${f2(s.sig.rsiBullMom.wr)}</b></span>`;
   if (b.kind === 'rsi') return `<span>RSI(6) <b class="${B === 'Bull' ? 'up' : 'dn'}">${f2(s.rsi)}</b></span><span>OSC <b class="${cls(s.osc[2])}">${f2(s.osc[2])}</b></span>`;
   if (b.kind === 'macd') return `<span>OSC <b>${f2(s.osc[0])}</b> → <b>${f2(s.osc[1])}</b> → <b class="${cls(s.osc[2])}">${f2(s.osc[2])}</b></span><span>DIF <b>${f2(s.dif)}</b></span><span>MACD <b>${f2(s.macd)}</b></span>`;
   const f = SC.fam(s, B);
@@ -220,8 +222,9 @@ window.addEventListener('popstate', () => closeSheet(true));
 /* ---------- 輸出 ---------- */
 function exportCsv(b) {
   const B = side, sideTxt = B === 'Bull' ? '多方' : '空方';
-  const extraH = {box: ['區間高', '區間低', '區間幅度(%)', '突破幅度(%)'], ma: [`MA${b.n}`, '交叉日', '均線斜率'], rsi: ['RSI(6)'], macd: ['OSC 前2日', 'OSC 前1日', 'OSC 今日', 'DIF', 'MACD'], x: ['均線', 'RSI(6)', 'MACD', '訊號']}[b.kind];
-  const extra = s => b.kind === 'box' ? [f2(s.sig.boxBull.hi), f2(s.sig.boxBull.lo), s.sig.boxBull.rng.toFixed(1), s.sig.boxBull.brk.toFixed(2)]
+  const extraH = {mom: ['RSI(6)', '前日RSI(6)', '上週週RSI(6)'], box: ['區間高', '區間低', '區間幅度(%)', '突破幅度(%)'], ma: [`MA${b.n}`, '交叉日', '均線斜率'], rsi: ['RSI(6)'], macd: ['OSC 前2日', 'OSC 前1日', 'OSC 今日', 'DIF', 'MACD'], x: ['均線', 'RSI(6)', 'MACD', '訊號']}[b.kind];
+  const extra = s => b.kind === 'mom' ? [f2(s.rsi), f2(s.sig.rsiBullMom.rp), f2(s.sig.rsiBullMom.wr)]
+    : b.kind === 'box' ? [f2(s.sig.boxBull.hi), f2(s.sig.boxBull.lo), s.sig.boxBull.rng.toFixed(1), s.sig.boxBull.brk.toFixed(2)]
     : b.kind === 'ma' ? [f2(s.ma[b.n]), md(s.sig[b.key].date), s.sig[b.key].slope.toFixed(2)]
     : b.kind === 'rsi' ? [f2(s.rsi)]
     : b.kind === 'macd' ? [f2(s.osc[0]), f2(s.osc[1]), f2(s.osc[2]), f2(s.dif), f2(s.macd)]
