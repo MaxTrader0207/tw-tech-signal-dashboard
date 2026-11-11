@@ -190,7 +190,7 @@ function query() {
     return ks.length ? ks.map(k => SC.sigTag(s, k)).join('') : '<span class="tag none">無訊號</span>';
   };
   $('qResult').innerHTML = `<div class="tbl"><table><thead><tr>
-      <th>代號</th><th>名稱</th><th>自選</th><th>市場</th><th>產業</th><th>收盤</th><th>漲跌幅</th><th>20日均量</th><th>上週週收／週MA10／週K／週MA30</th>
+      <th>代號</th><th>名稱</th><th>自選</th><th>市場</th><th>產業</th><th>收盤</th><th>漲跌幅</th><th>20日均量</th><th>上週週收／週MA10／週MA30／週MACD柱</th>
       <th>MA10</th><th>MA30</th><th>MA60</th><th>MA100</th><th>RSI(6)</th><th>DIF</th><th>MACD</th><th>OSC</th><th style="text-align:left">命中訊號</th>
     </tr></thead><tbody>` +
     hits.map(s => `<tr${SC.watch.has(s.id) ? ' class="w"' : ''}>
@@ -217,7 +217,7 @@ async function show(date) {
       (ver < 2 ? '｜⚠ 此日期為舊格式資料，均量篩選、除息與新增標記不適用' : ver < 3 ? '｜此日期資料尚無歷史回測' : '') +
       (ver < 4 ? '｜⚠ 此日期資料尚無週線資訊，週線濾網不適用' : ver < 5 ? '｜⚠ 此日期為舊版週線條件（多方：週收盤站上週MA10）'
         : ver < 6 ? '｜⚠ 此日期為舊版週線條件（多方：週MA10上揚）' : ver < 7 ? '｜⚠ 此日期為舊版週線條件（多方：週RSI6>50，未含上揚）' : ver < 9 ? '｜⚠ 此日期資料的多方均線交叉為舊版視窗（非當日）' : '') +
-      (ver >= 4 && ver < 13 ? '｜⚠ 此日期為舊版多方週線條件（非週收站上週MA30）' : '');
+      (ver >= 4 && ver < 14 ? '｜⚠ 此日期為舊版多方週線條件（非週收站上週MA30且週MACD柱>0）' : '');
     $('btNote').innerHTML = cur.bt
       ? `<span>📊 歷史回測期間 ${SC.btPeriod(cur)}：訊號首日出現後持有 3／5／10／20 個交易日，多方看上漲機率、空方看下跌機率；<b style="color:var(--accent)">金色</b>＝高於同期全體個股基準 3 個百分點以上。回測結果隨「20 日均量」篩選切換。</span>`
       : '';

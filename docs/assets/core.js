@@ -105,7 +105,7 @@ SC.macdTxt = (s, B) => SC.fam(s, B).macd.map(t => t === 'Cross' ? (B === 'Bull' 
 
 /* ---------- 篩選 ----------
  * o = {mkt, ind, v20, exx, nw, watchOnly, wk, wkStrict}
- *   wk：週線濾網——多方訊號需上週週收盤 > 上週週 MA30，空方訊號需上週週收盤跌破上週週 MA10
+ *   wk：週線濾網——多方訊號需上週週收盤 > 上週週 MA30 且上週週 MACD 柱狀體 > 0，空方訊號需上週週收盤跌破上週週 MA10
  *   wkStrict：資料有週線欄位（ver ≥ 4）時，缺週線資料的個股不保留訊號
  * 回傳的個股物件 sig 已依「排除除息影響／只看新增」過濾（原物件不變）。 */
 SC.filter = (stocks, o) => {
@@ -132,18 +132,18 @@ SC.filter = (stocks, o) => {
 };
 
 /* ---------- 週線 ---------- */
-// 多方週線條件：上週週收盤 > 週MA30（ver 13）；舊資料沿用當時產生的 bull／rise／up
+// 多方週線條件：上週週收盤 > 週MA30 且週MACD柱 > 0（ver 14）；舊資料沿用當時產生的 bull／rise／up
 SC.wkBull = s => !!s.wk && (s.wk.bull != null ? s.wk.bull : s.wk.rise != null ? s.wk.rise : !!s.wk.up);
 SC.wkPass = (s, B) => !!(s.wk && (B === 'Bull' ? SC.wkBull(s) : s.wk.dn));
-SC.wkSfx = key => /Bull/.test(key) ? '＋上週週收盤站上週MA30' : '＋上週週線跌破週MA10';
+SC.wkSfx = key => /Bull/.test(key) ? '＋上週週收站上週MA30且週MACD柱>0' : '＋上週週線跌破週MA10';
 SC.wkRed = s => !!s.wk && s.wk.o != null && s.wk.c > s.wk.o;
 SC.wkAbove30 = s => !!s.wk && s.wk.ma30 != null && s.wk.c > s.wk.ma30;
 SC.r6Arrow = s => s.wk && s.wk.rp != null ? (s.wk.r6 > s.wk.rp ? '↑' : s.wk.r6 < s.wk.rp ? '↓' : '→') : '';
 SC.wkArrow = s => s.wk && s.wk.mp != null ? (s.wk.ma > s.wk.mp ? '↑' : s.wk.ma < s.wk.mp ? '↓' : '→') : '';
 SC.wkCell = s => s.wk ? `<span class="${s.wk.dn ? 'dn' : 'up'}">${SC.f2(s.wk.c)}</span><small> / </small>` +
   `<span class="${s.wk.mp == null ? '' : s.wk.ma > s.wk.mp ? 'up' : 'dn'}">${SC.f2(s.wk.ma)}${SC.wkArrow(s)}</span>` +
-  (s.wk.o != null ? `<small>｜K </small><span class="${SC.wkRed(s) ? 'up' : 'dn'}">${SC.wkRed(s) ? '紅' : '黑'}</span>` : '') +
-  (s.wk.ma30 != null ? `<small>｜MA30 </small><span class="${SC.wkAbove30(s) ? 'up' : 'dn'}">${SC.f2(s.wk.ma30)}</span>` : '') : '—';
+  (s.wk.ma30 != null ? `<small>｜MA30 </small><span class="${SC.wkAbove30(s) ? 'up' : 'dn'}">${SC.f2(s.wk.ma30)}</span>` : '') +
+  (s.wk.osc != null ? `<small>｜柱 </small><span class="${s.wk.osc > 0 ? 'up' : 'dn'}">${SC.f2(s.wk.osc)}</span>` : '') : '—';
 
 /* 自選股置頂（穩定排序，保留原順序） */
 SC.watchFirst = arr => {

@@ -191,8 +191,8 @@ def last_week_state(wk_of_row, weeks, i):
 
 
 def wk_bull(ws):
-    """多方週線條件：上週週收盤 > 上週週 MA30。"""
-    return bool(ws) and ws[8] is not None and ws[0] > ws[8]
+    """多方週線條件：上週週收盤 > 上週週 MA30，且上週週 MACD 柱狀體（OSC）> 0。"""
+    return bool(ws) and ws[8] is not None and ws[0] > ws[8] and ws[6] is not None and ws[6] > 0
 
 
 def x_group(sigs, side):
