@@ -13,9 +13,11 @@ import json
 import re
 import sys
 import time
+from array import array
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import requests
 import yfinance as yf
@@ -35,7 +37,8 @@ INTRADAY_CUTOFF = dt.time(14, 30)  # 台北時間 14:30 前不採用當日 K 棒
 EX_WINDOW = 5                      # 近 N 個交易日內有除息者標示
 STREAK_MAX = 10                    # 在榜天數最多回推 N 日（≥N 顯示 N+）
 VOL_AVG_N = 20                     # 均量天數
-PERIOD = "2y"                      # Yahoo 下載區間（2 年：指標更收斂、回測樣本更多）
+DATA_START = "2023-06-01"          # Yahoo 下載起日：回測起日前需約 110 個交易日暖機（日線指標、週線 MA10／RSI6）
+BT_START = "2024-01-01"            # 歷史回測只統計此日（含）之後出現的訊號
 HORIZONS = (3, 5, 10, 20)          # 回測持有天數（多空相同）
 V_THRESH = (0, 100, 500, 1000, 5000)  # 回測依事件當日 20 日均量（張）分組，對應前端均量門檻
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -195,7 +198,7 @@ def fetch_yfinance(symbols):
         df = None
         for attempt in range(3):
             try:
-                df = yf.download(chunk, period=PERIOD, interval="1d", auto_adjust=False,
+                df = yf.download(chunk, start=DATA_START, interval="1d", auto_adjust=False,
                                  actions=True, group_by="ticker", threads=True,
                                  progress=False, timeout=30)
                 break
@@ -221,7 +224,8 @@ def fetch_chart(sess, sym):
     for host in ("query1", "query2"):
         try:
             r = sess.get(f"https://{host}.finance.yahoo.com/v8/finance/chart/{sym}",
-                         params={"range": PERIOD, "interval": "1d", "events": "div,splits"}, timeout=20)
+                         params={"period1": int(dt.datetime.fromisoformat(DATA_START).replace(tzinfo=TPE).timestamp()),
+                                 "period2": int(time.time()) + 86400, "interval": "1d", "events": "div,splits"}, timeout=20)
         except requests.RequestException:
             continue
         if r.status_code == 404:
@@ -399,6 +403,7 @@ def streaks(flags, keys):
 class Backtest:
     """訊號首日出現後持有 h 日的報酬統計（以還原權息價計算，避免除息干擾）。
 
+    期間：BT_START（2024-01-01）起出現的訊號。
     事件：某訊號在當日出現、前一日沒有（交集組合同理：當日進入該組合）。
     勝率：多方訊號＝上漲機率，空方訊號＝下跌機率（平盤不計）。
     報酬同時給平均數與中位數；中位數不受少數極端值（飆股或還原價異常）影響。
@@ -406,8 +411,12 @@ class Backtest:
     """
 
     def __init__(self):
-        self.ev = {}                              # key -> [(v20, {h: ret}, 上週週RSI6>50且上揚, 上週週收盤跌破週MA10)]
-        self.base = []                            # [(v20, {h: ret}, 上週週RSI6>50且上揚, 上週週收盤跌破週MA10)]
+        # 以欄位陣列儲存（2024 年起約 140 萬筆基準樣本，避免大量 Python 物件占用記憶體）
+        self._v20 = array("d")                               # 事件當日 20 日均量（張）
+        self._ret = {h: array("d") for h in HORIZONS}       # 持有 h 日報酬，超出資料範圍為 NaN
+        self._wb = bytearray()                               # 多方週線條件：上週週 RSI6 > 50 且上揚
+        self._wd = bytearray()                               # 空方週線條件：上週週收盤跌破週 MA10
+        self.ev = {}                                         # 訊號 key -> 基準樣本索引 array("l")
         self.d0, self.d1 = None, None
 
     def add(self, rows, flags):
@@ -420,53 +429,70 @@ class Backtest:
             csum.append(csum[-1] + v)
         L = len(rows)
         wk_of_row, weeks = weekly_series(rows)
+        nan = float("nan")
         for i in range(MIN_BARS, L - min(HORIZONS)):
+            if rows[i]["date"] < BT_START:
+                continue
             fi, fp = flags[i], flags[i - 1]
             if fi is None or fp is None:
                 continue
             lo = max(0, i - VOL_AVG_N + 1)
-            v20 = (csum[i + 1] - csum[lo]) / (i + 1 - lo) / 1000
-            rets = {h: px[i + h] / px[i] - 1 for h in HORIZONS if i + h < L}
+            idx = len(self._v20)
+            self._v20.append((csum[i + 1] - csum[lo]) / (i + 1 - lo) / 1000)
+            for h in HORIZONS:
+                self._ret[h].append(px[i + h] / px[i] - 1 if i + h < L else nan)
             ws = last_week_state(wk_of_row, weeks, i)
-            rec = (v20, rets, bool(ws and ws[4] > 50 and ws[4] > ws[5]), bool(ws and ws[0] < ws[1]))
-            self.base.append(rec)
+            self._wb.append(1 if ws and ws[4] > 50 and ws[4] > ws[5] else 0)
+            self._wd.append(1 if ws and ws[0] < ws[1] else 0)
             events = list(fi - fp)
             for side in ("Bull", "Bear"):
                 g = x_group(fi, side)
                 if g and g != x_group(fp, side):
                     events.append(f"x{side}{g}")
             for k in events:
-                self.ev.setdefault(k, []).append(rec)
+                self.ev.setdefault(k, array("l")).append(idx)
             if events:
                 d = rows[i]["date"]
                 self.d0 = d if self.d0 is None or d < self.d0 else self.d0
                 self.d1 = d if self.d1 is None or d > self.d1 else self.d1
 
-    @staticmethod
-    def _stats(recs, t, h, bull=None, weekly=False):
-        # weekly=True：多方只取上週週 RSI(6) > 50 且上揚的事件，空方只取上週週收盤跌破週 MA10 的事件
+    def _stats(self, idx, t, h, bull=None, weekly=False):
+        """idx＝事件樣本索引（None 表示基準＝全部樣本）。
+        weekly=True：多方只取上週週 RSI(6) > 50 且上揚的事件，空方只取上週週收盤跌破週 MA10 的事件。"""
+        v20, r = self.V20, self.R[h]
+        if idx is not None:
+            v20, r = v20[idx], r[idx]
+        m = (v20 >= t) & ~np.isnan(r)
         if weekly:
-            recs = [r for r in recs if (r[2] if bull else r[3])]
-        xs = sorted(r[1][h] for r in recs if r[0] >= t and h in r[1])
-        n = len(xs)
+            w = self.WB if bull else self.WD
+            m &= (w if idx is None else w[idx])
+        xs = r[m]
+        n = int(xs.size)
         if not n:
             return [0, None, None, None] if bull is not None else [0, None, None, None, None]
-        mean = sum(xs) / n * 100
-        med = (xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2) * 100
-        up = sum(x > 0 for x in xs) / n * 100
-        dn = sum(x < 0 for x in xs) / n * 100
+        mean = float(xs.mean()) * 100
+        med = float(np.median(xs)) * 100
+        up = float((xs > 0).sum()) / n * 100
+        dn = float((xs < 0).sum()) / n * 100
         if bull is None:   # 基準：n、平均、上漲%、下跌%、中位數
             return [n, round(mean, 2), round(up, 1), round(dn, 1), round(med, 2)]
         return [n, round(mean, 2), round(up if bull else dn, 1), round(med, 2)]   # n、平均、勝率、中位數
 
     def result(self):
+        self.V20 = np.frombuffer(self._v20, dtype=np.float64)
+        self.R = {h: np.frombuffer(a, dtype=np.float64) for h, a in self._ret.items()}
+        self.WB = np.frombuffer(bytes(self._wb), dtype=np.uint8).astype(bool)
+        self.WD = np.frombuffer(bytes(self._wd), dtype=np.uint8).astype(bool)
+        ev = {k: np.frombuffer(a, dtype=np.int64) if a.itemsize == 8 else np.array(a, dtype=np.int64)
+              for k, a in self.ev.items()}
+        log(f"[回測] {BT_START} 起，基準樣本 {self.V20.size:,} 筆，訊號 {len(ev)} 種")
         return {
             "from": self.d0, "to": self.d1, "h": list(HORIZONS),
-            "base": {str(t): {str(h): self._stats(self.base, t, h) for h in HORIZONS} for t in V_THRESH},
-            "by": {str(t): {k: {str(h): self._stats(recs, t, h, "Bull" in k) for h in HORIZONS}
-                            for k, recs in self.ev.items()} for t in V_THRESH},
-            "byW": {str(t): {k: {str(h): self._stats(recs, t, h, "Bull" in k, weekly=True) for h in HORIZONS}
-                             for k, recs in self.ev.items()} for t in V_THRESH},
+            "base": {str(t): {str(h): self._stats(None, t, h) for h in HORIZONS} for t in V_THRESH},
+            "by": {str(t): {k: {str(h): self._stats(ix, t, h, "Bull" in k) for h in HORIZONS}
+                            for k, ix in ev.items()} for t in V_THRESH},
+            "byW": {str(t): {k: {str(h): self._stats(ix, t, h, "Bull" in k, weekly=True) for h in HORIZONS}
+                             for k, ix in ev.items()} for t in V_THRESH},
         }
 
 
