@@ -17,21 +17,23 @@ SC.X_FAM_KEYS = ['maBull30', 'maBull60', 'maBull100', 'maBear30', 'maBear60', 'm
 /* 多方「MACD 多頭」：MACD 慢線 > 0、收盤 > MA10、MA10 上揚；不列入交集 */
 SC.MT_TITLE = 'MACD 慢線 > 0，收盤站上 MA10，且 MA10 上揚';
 SC.MX_TITLE = '上週週線上漲，MA10 近 2 日黃金交叉 MA30，且 MA30 上揚';
+/* 多方「RSI 動能＋窄幅整理」：RSI 動能成立，且前 20 日高低差 ≤ 10%；不列入交集 */
+SC.TIGHT_TITLE = 'RSI 動能，且前 20 日整理區間高低差 ≤ 10%';
 SC.MOM_TITLE = '上週週 RSI(6) > 50，日線 RSI(6) > 70 且上揚';
 SC.BOX_TITLE = '前 20 日整理區間（高低差 ≤ 15%），今日收盤突破區間高點';
 SC.SIG_KEYS = ['maBull30', 'maBull60', 'maBull100', 'maBullX', 'boxBull', 'maBear30', 'maBear60', 'maBear100',
-  'rsiBull', 'rsiBullMom', 'rsiBear', 'macdBullCross', 'macdBullExp', 'macdBullTrend', 'macdBearCross', 'macdBearExp'];
+  'rsiBull', 'rsiBullMom', 'rsiBullTight', 'rsiBear', 'macdBullCross', 'macdBullExp', 'macdBullTrend', 'macdBearCross', 'macdBearExp'];
 SC.SIG_LABEL = {
   maBull30: '黃金交叉 MA30', maBull60: '黃金交叉 MA60', maBull100: '黃金交叉 MA100', maBullX: 'MA10 交叉 MA30', boxBull: '箱型突破',
   maBear30: '死亡交叉 MA30', maBear60: '死亡交叉 MA60', maBear100: '死亡交叉 MA100',
-  rsiBull: 'RSI(6) ≥ 80', rsiBullMom: 'RSI 動能', rsiBear: 'RSI(6) ≤ 20',
+  rsiBull: 'RSI(6) ≥ 80', rsiBullMom: 'RSI 動能', rsiBullTight: 'RSI 動能＋窄幅', rsiBear: 'RSI(6) ≤ 20',
   macdBullCross: 'OSC 翻正', macdBullExp: 'OSC 連 2 日放大', macdBullTrend: 'MACD 多頭',
   macdBearCross: 'OSC 翻負', macdBearExp: 'OSC 連 2 日減少',
 };
 SC.FILE_LABEL = {
   maBull30: 'MA30_黃金交叉', maBull60: 'MA60_黃金交叉', maBull100: 'MA100_黃金交叉', maBullX: 'MA10黃金交叉MA30（週線上漲、MA30上揚）', boxBull: '箱型突破（一個月整理區間15%內）',
   maBear30: 'MA30_死亡交叉', maBear60: 'MA60_死亡交叉', maBear100: 'MA100_死亡交叉',
-  rsiBull: 'RSI6_80以上', rsiBullMom: 'RSI動能（週RSI6大於50、日RSI6大於70且上揚）', rsiBear: 'RSI6_20以下',
+  rsiBull: 'RSI6_80以上', rsiBullMom: 'RSI動能（週RSI6大於50、日RSI6大於70且上揚）', rsiBullTight: 'RSI動能加窄幅整理（前20日區間10%內）', rsiBear: 'RSI6_20以下',
   macdBullCross: 'MACD_柱狀體翻正', macdBullExp: 'MACD_柱狀體連2日放大', macdBullTrend: 'MACD多頭（慢線大於0、站上MA10且上揚）',
   macdBearCross: 'MACD_柱狀體翻負', macdBearExp: 'MACD_柱狀體連2日減少',
   xBull3: '交集_三指標共振', xBullMD: '交集_均線+MACD', xBullMR: '交集_均線+RSI', xBullRD: '交集_RSI+MACD',

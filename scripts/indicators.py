@@ -13,6 +13,7 @@ MIN_BARS = 110
 MAX_N = (10, 30)     # 多方「均線交叉」：上週週收盤 > 前一週週收盤，日線 MA10 黃金交叉 MA30（近 MAX_WIN 日內）且 MA30 上揚
 MAX_WIN = 2
 RSI_MOM = (50, 70)   # 多方「RSI 動能」：上週週 RSI6 > 50、當日日線 RSI6 > 70 且高於前一日
+TIGHT_RANGE = 0.10   # 多方「RSI 動能＋窄幅整理」：RSI 動能成立，且前 BOX_N 日（不含當日）最高／最低價差 ≤ 10%
 BOX_N = 20           # 多方「箱型突破」：前 BOX_N 個交易日（約一個月，不含當日）為整理區間
 BOX_RANGE = 0.15     # 整理區間：區間最高價 ÷ 最低價 − 1 ≤ 15%
 
@@ -45,6 +46,14 @@ def rsi_mom(r6, i, wr6):
     """第 i 日是否 RSI 動能：上週週 RSI6（wr6）> 50，日線 RSI6 > 70 且較前一日上揚。"""
     return (i >= 1 and r6[i] is not None and r6[i - 1] is not None and wr6 is not None
             and wr6 > RSI_MOM[0] and r6[i] > RSI_MOM[1] and r6[i] > r6[i - 1])
+
+
+def box_range(h, l, i):
+    """前 BOX_N 日（不含當日）的 (區間高, 區間低, 幅度)；資料不足回傳 None。"""
+    if i < BOX_N:
+        return None
+    hi, lo = max(h[i - BOX_N:i]), min(l[i - BOX_N:i])
+    return (hi, lo, hi / lo - 1) if lo > 0 else None
 
 
 def box_break(c, h, l, i):
@@ -151,6 +160,9 @@ def signal_series(rows):
         ws = last_week_state(wk_of_row, weeks, i)
         if rsi_mom(r6, i, ws[4] if ws else None):
             s.add("rsiBullMom")
+            br = box_range(h, l, i)
+            if br and br[2] <= TIGHT_RANGE:
+                s.add("rsiBullTight")
         for n, m in mas.items():
             gx = dx = False
             for j in range(i, i - max(CROSS_WIN_BULL, CROSS_WIN_BEAR), -1):
@@ -333,6 +345,10 @@ def analyze(rows):
     ws = last_week_state(wk_of_row, weeks, last)
     if rsi_mom(r6, last, ws[4] if ws else None):
         res["sig"]["rsiBullMom"] = {"rp": r6[last - 1], "wr": ws[4]}
+        br = box_range(h, l, last)
+        if br and br[2] <= TIGHT_RANGE:
+            res["sig"]["rsiBullTight"] = {"hi": br[0], "lo": br[1], "rng": br[2] * 100,
+                                          "brk": (c[last] / br[0] - 1) * 100}
 
     dif, sig, osc = macd(h, l, c)
     o0, o1, o2 = osc[last], osc[last - 1], osc[last - 2]
