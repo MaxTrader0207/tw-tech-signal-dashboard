@@ -44,17 +44,23 @@ V_THRESH = (0, 100, 500, 1000, 5000)  # 回測依事件當日 20 日均量（張
 # 交易成本（普通股、現股／融券、未打折手續費）：
 #   手續費 0.1425%（買、賣各收一次）；證交稅 0.3%（賣出時收，融券賣出亦同）；融券借券費 0.08%（融券賣出時收）
 FEE, TAX, LEND = 0.001425, 0.003, 0.0008
-LONG_K = (1 - FEE - TAX) / (1 + FEE)               # 做多淨報酬 = (1 + 價格報酬) × LONG_K − 1
+TAX_ETF = 0.001                    # ETF 證交稅 0.1%
 
 
-def long_net(g):
+def long_net(g, tax=TAX):
     """做多（收盤買進、出場賣出）扣除手續費與證交稅後的淨報酬；g 為價格報酬。"""
-    return (1 + g) * LONG_K - 1
+    return (1 + g) * (1 - FEE - tax) / (1 + FEE) - 1
 
 
-def short_net(g):
+def short_net(g, tax=TAX):
     """放空（收盤融券賣出、出場買回）扣除手續費、證交稅與借券費後的淨報酬（以賣出金額為本）。"""
-    return (1 - FEE - TAX - LEND) - (1 + g) * (1 + FEE)
+    return (1 - FEE - tax - LEND) - (1 + g) * (1 + FEE)
+
+
+# ETF 標的池：直接以 ETF 本身的股價判斷訊號與回測（不展開持股）；不計入「全市場」
+ETF_POOL = [("0050", "元大台灣50"), ("0051", "元大中型100"), ("00733", "富邦臺灣中小"), ("00878", "國泰永續高股息"),
+            ("006208", "富邦台50"), ("00713", "元大台灣高息低波"), ("00919", "群益台灣精選高息"), ("00929", "復華台灣科技優息")]
+ETF_CODE = 3                       # 回測分組代碼（與 INDEX_GROUPS 的 1、2 不重疊）
 
 
 TP_LEVELS = (0.05, 0.10, 0.15)     # 多方停利停損回測：停利級距（各自獨立測算）
@@ -502,7 +508,8 @@ class Backtest:
         self._tp = {(tp, h): array("f") for tp in TP_LEVELS for h in HORIZONS}
         self._tx = {(tp, h): bytearray() for tp in TP_LEVELS for h in HORIZONS}
         self._g = bytearray()                                # 標的範圍分組：0＝其他、INDEX_GROUPS 的代碼（目前成分股）
-        self.UM = None                                       # 統計時套用的標的範圍遮罩（None＝全市場）
+        self.UM = None                                       # 統計時套用的標的範圍遮罩（None＝不限）
+        self.tax = TAX                                       # 統計時套用的證交稅率（ETF 標的池為 0.1%）
         self._wb = bytearray()                               # 多方週線條件：上週週收盤 > 週MA30 且週MACD柱 > 0
         self._wd = bytearray()                               # 空方週線條件：上週週收盤跌破週 MA30
         self.ev = {}                                         # 訊號 key -> 基準樣本索引 array("l")
@@ -577,7 +584,7 @@ class Backtest:
         if not n:
             return [0, None, None, None] if bull is not None else [0, None, None, None, None, None, None]
         pct = lambda v: round(float(v) * 100, 2)
-        L, S = long_net(xs), short_net(xs)
+        L, S = long_net(xs, self.tax), short_net(xs, self.tax)
         if bull is None:   # 基準：n、做多淨均、做多獲利%、放空獲利%、做多淨中位、放空淨均、放空淨中位
             return [n, pct(L.mean()), round(float((L > 0).sum()) / n * 100, 1), round(float((S > 0).sum()) / n * 100, 1),
                     pct(np.median(L)), pct(S.mean()), pct(np.median(S))]
@@ -594,7 +601,7 @@ class Backtest:
             m &= (self.UM if idx is None else self.UM[idx])
         if weekly:
             m &= (self.WB if idx is None else self.WB[idx])
-        xs, ex = long_net(r[m].astype(np.float64)), x[m]
+        xs, ex = long_net(r[m].astype(np.float64), self.tax), x[m]
         n = int(xs.size)
         if not n:
             return [0, None, None, None, None, None]
@@ -613,17 +620,24 @@ class Backtest:
               for k, a in self.ev.items()}
         G = np.frombuffer(bytes(self._g), dtype=np.uint8)
         log(f"[回測] {BT_START} 起，基準樣本 {self.V20.size:,} 筆，訊號 {len(ev)} 種")
+        cost = lambda tax: {"fee": round(FEE * 100, 4), "tax": round(tax * 100, 4), "lend": round(LEND * 100, 4)}
+        self.UM = G != ETF_CODE                              # 全市場＝上市櫃普通股（不含 ETF 標的池）
         out = {
             "from": self.d0, "to": self.d1, "h": list(HORIZONS),
-            "cost": {"fee": round(FEE * 100, 4), "tax": round(TAX * 100, 4), "lend": round(LEND * 100, 4)},   # 交易成本（%），回測報酬皆為淨報酬
+            "cost": cost(TAX),   # 交易成本（%），回測報酬皆為淨報酬
             **self._pack(ev),
         }
-        # 各標的範圍（以目前成分股回推，含存活者偏差）另算一份
+        # 各標的範圍另算一份：成分股（以目前成分股回推，含存活者偏差）、ETF 標的池（ETF 本身，證交稅 0.1%）
         out["u"] = {}
         for key, (code, *_x) in INDEX_GROUPS.items():
             self.UM = G == code
             if self.UM.any():
                 out["u"][key] = self._pack(ev)
+        self.UM = G == ETF_CODE
+        if self.UM.any():
+            self.tax = TAX_ETF
+            out["u"]["etf"] = {"cost": cost(TAX_ETF), **self._pack(ev)}
+            self.tax = TAX
         self.UM = None
         return out
 
@@ -670,10 +684,10 @@ def build_payload(stocks, prices, now, members=None):
         vols = [x["volume"] for x in rows[-VOL_AVG_N:]]
         item["v20"] = round(sum(vols) / len(vols) / 1000) if vols else 0      # 20 日均量（張）
         srows, flags = signal_series(rows)
-        g = grp.get(s["id"])
+        g = ("etf", ETF_CODE) if s.get("etf") else grp.get(s["id"])
         bt.add(srows, flags, g[1] if g else 0)
         if g:
-            item["idx"] = g[0]                                  # 標的範圍：tw50／mid100
+            item["idx"] = g[0]                                  # 標的範圍：tw50／mid100／etf（ETF 標的池）
         wk_of_row, weeks = weekly_series(srows)
         ws = last_week_state(wk_of_row, weeks, len(srows) - 1)
         if ws:   # 多方條件＝上週週收盤 > 週 MA30 且週 MACD 柱 > 0；空方條件＝上週週收盤跌破週 MA30
@@ -701,7 +715,7 @@ def build_payload(stocks, prices, now, members=None):
     fresh.sort(key=lambda x: x["id"])
     return {
         "date": max_date,
-        "ver": 19,                      # …10：新增 maBull10；11：週MACD柱>0；12：多方週線條件改為週K收紅且站上週MA30；13：移除 maBull10、多方週線條件改為週收站上週MA30；14：多方再加週MACD柱>0；15：空方改為週收跌破週MA30；16：多方停利停損回測 tpsl；17：回測扣除交易成本；18：停利 5／10／15% 三級距；19：標的範圍（0050／中型100 成分股）與分組回測 bt.u
+        "ver": 20,                      # …10：新增 maBull10；11：週MACD柱>0；12：多方週線條件改為週K收紅且站上週MA30；13：移除 maBull10、多方週線條件改為週收站上週MA30；14：多方再加週MACD柱>0；15：空方改為週收跌破週MA30；16：多方停利停損回測 tpsl；17：回測扣除交易成本；18：停利 5／10／15% 三級距；19：標的範圍（0050／中型100 成分股）與分組回測 bt.u；20：ETF 標的池（idx=etf，不計入全市場）
         "generated_at": now.isoformat(timespec="seconds"),
         "source": "Yahoo Finance 日線與配息（yfinance）；股票清單：臺灣證券交易所 ISIN 公告／OpenAPI；成分股：MoneyDJ 0050／0051 全部持股",
         "stats": {
@@ -710,7 +724,9 @@ def build_payload(stocks, prices, now, members=None):
         },
         "excluded": {"no_data": no_data, "insufficient": short, "stale": stale},
         "groups": {k: {"name": g["name"], "etf": g["etf"], "d": g.get("d"), "n": len(g["ids"]),
-                       "scanned": sum(1 for x in fresh if x.get("idx") == k)} for k, g in members.items()},
+                       "scanned": sum(1 for x in fresh if x.get("idx") == k)} for k, g in members.items()}
+                  | {"etf": {"name": "ETF 標的池", "ids": [e for e, _ in ETF_POOL], "n": len(ETF_POOL),
+                             "scanned": sum(1 for x in fresh if x.get("idx") == "etf")}},
         "bt": bt.result(),
         "stocks": fresh,
     }
@@ -761,8 +777,10 @@ def main():
     t0 = time.time()
     stocks = stock_universe(now)
     if len(stocks) < 1000:
-        sys.exit(f"股票清單只有 {len(stocks)} 檔，疑似來源異常，中止。")
+        sys.exit(f"股票清單只有 {len(stocks)} 檔，疑似來源異常，中止。")  # 普通股清單檢查（ETF 標的池另外加入）
     members = index_members()
+    have = {s["id"] for s in stocks}
+    stocks = stocks + [{"id": e, "name": n, "mkt": "TWSE", "ind": "ETF", "etf": True} for e, n in ETF_POOL if e not in have]
     t1 = time.time()
     prices = fetch_prices([ysym(s) for s in stocks])
     t2 = time.time()

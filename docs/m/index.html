@@ -180,7 +180,7 @@ footer .warn{background:#1c1410;border:1px solid #5a3c14;border-radius:10px;padd
   </div>
   <div class="t2" id="filters">
     <label class="f date"><span class="lb">📅 日期</span><select id="date"><option>載入中…</option></select></label>
-    <label class="f"><span class="lb">標的</span><select id="univ"><option value="">全市場</option><option value="tw50">0050成分股</option><option value="mid100">中型100</option></select></label>
+    <label class="f"><span class="lb">標的</span><select id="univ"><option value="">全市場</option><option value="tw50">0050成分股</option><option value="mid100">中型100</option><option value="etf">ETF池</option></select></label>
     <label class="f"><span class="lb">市場</span><select id="mkt"><option value="">全部</option><option value="TWSE">上市</option><option value="TPEx">上櫃</option></select></label>
     <label class="f"><span class="lb">產業</span><select id="ind"><option value="">全部</option></select></label>
     <label class="f"><span class="lb">均量</span><select id="v20"><option value="0">不限</option><option value="100" selected>≥100張</option><option value="500">≥500張</option><option value="1000">≥1000張</option><option value="5000">≥5000張</option></select></label>
@@ -206,7 +206,7 @@ footer .warn{background:#1c1410;border:1px solid #5a3c14;border-radius:10px;padd
 
 <footer>
   資料來源：Yahoo Finance 日線；股票清單：臺灣證券交易所 ISIN 公告。GitHub Actions 於交易日收盤後自動掃描全市場上市櫃普通股。
-  指標採三竹公式：MA 收盤價簡單均線；RSI(6) Wilder 平滑；MACD 以 DI＝(H＋L＋2C)÷4 計算 DIF＝EMA12−EMA26、MACD＝EMA9(DIF)、OSC＝DIF−MACD。均線交叉：多方以最近 1 個交易日（當日）、空方以最近 3 個交易日為準。「新／連N」為訊號連續出現的交易日數；「除息」為近 5 個交易日內依 Yahoo 配息與還原因子偵測，「⚠除息」表示改用還原權息價計算時該訊號不成立。「歷史回測」統計 2024 年 1 月起的訊號首日出現後持有 3／5／10／20 個交易日的表現（還原權息價），依當日 20 日均量分組並隨均量篩選切換；報酬皆已扣除交易成本（手續費 0.1425% 買賣各一次、證交稅 0.3%、放空另加借券費 0.08%，未打折、不含滑價），多方看做多獲利機率、空方看放空獲利機率，金色＝高於同期全體個股基準 3 個百分點以上。多方另列「🎯 停利／停損」：停利 5%／10%／15% 三級距各自測算、停損 −10%，訊號日收盤進場，每格為勝率／平均淨報酬（跳空以開盤價出場，同日兩者皆觸及視為先停損），最多持有 N 日、未觸發則到期收盤出場。「標的」0050／中型100 成分股取自 MoneyDJ 的 0050、0051 最新持股，回測以目前成分股回推，含存活者偏差。過去表現不代表未來。自選股存在本機瀏覽器。「週線濾網」開啟時，多方區塊另需上週週收盤站上上週週線 30MA，且上週週線 MACD 柱狀體大於 0，空方區塊另需上週週收盤跌破上週週線 30MA。
+  指標採三竹公式：MA 收盤價簡單均線；RSI(6) Wilder 平滑；MACD 以 DI＝(H＋L＋2C)÷4 計算 DIF＝EMA12−EMA26、MACD＝EMA9(DIF)、OSC＝DIF−MACD。均線交叉：多方以最近 1 個交易日（當日）、空方以最近 3 個交易日為準。「新／連N」為訊號連續出現的交易日數；「除息」為近 5 個交易日內依 Yahoo 配息與還原因子偵測，「⚠除息」表示改用還原權息價計算時該訊號不成立。「歷史回測」統計 2024 年 1 月起的訊號首日出現後持有 3／5／10／20 個交易日的表現（還原權息價），依當日 20 日均量分組並隨均量篩選切換；報酬皆已扣除交易成本（手續費 0.1425% 買賣各一次、證交稅 0.3%、放空另加借券費 0.08%，未打折、不含滑價），多方看做多獲利機率、空方看放空獲利機率，金色＝高於同期全體個股基準 3 個百分點以上。多方另列「🎯 停利／停損」：停利 5%／10%／15% 三級距各自測算、停損 −10%，訊號日收盤進場，每格為勝率／平均淨報酬（跳空以開盤價出場，同日兩者皆觸及視為先停損），最多持有 N 日、未觸發則到期收盤出場。「標的」0050／中型100 成分股取自 MoneyDJ 的 0050、0051 最新持股，回測以目前成分股回推，含存活者偏差。「ETF池」＝0050、0051、00733、00878、006208、00713、00919、00929 本身股價，證交稅以 0.1% 計，不計入全市場。過去表現不代表未來。自選股存在本機瀏覽器。「週線濾網」開啟時，多方區塊另需上週週收盤站上上週週線 30MA，且上週週線 MACD 柱狀體大於 0，空方區塊另需上週週收盤跌破上週週線 30MA。
   <div class="warn">⚠ 投資警語：本頁僅供技術分析研究與資訊參考，不構成任何投資建議或買賣邀約。技術指標具落後性，投資一定有風險，投資人應自行判斷並承擔所有投資結果與責任。</div>
 </footer>
 

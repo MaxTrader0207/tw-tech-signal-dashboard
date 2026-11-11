@@ -108,8 +108,9 @@ SC.macdTxt = (s, B) => SC.fam(s, B).macd.map(t => t === 'Cross' ? (B === 'Bull' 
  *   wk：週線濾網——多方訊號需上週週收盤 > 上週週 MA30 且上週週 MACD 柱狀體 > 0，空方訊號需上週週收盤跌破上週週 MA30
  *   wkStrict：資料有週線欄位（ver ≥ 4）時，缺週線資料的個股不保留訊號
  * 回傳的個股物件 sig 已依「排除除息影響／只看新增」過濾（原物件不變）。 */
-/* 標的範圍：全市場／0050 成分股／中型100 成分股（ver 19 起個股帶 idx；回測另有 bt.u 分組） */
-SC.UNIV = {tw50: '0050 成分股', mid100: '中型100 成分股'};
+/* 標的範圍：全市場（上市櫃普通股）／0050 成分股／中型100 成分股／ETF 標的池（ETF 本身，idx=etf，不計入全市場）
+ * ver 19 起個股帶 idx；回測另有 bt.u 分組，ETF 標的池的成本以證交稅 0.1% 計 */
+SC.UNIV = {tw50: '0050 成分股', mid100: '中型100 成分股', etf: 'ETF 標的池'};
 SC.univ = '';
 SC.btOf = cur => {
   const bt = cur && cur.bt;
@@ -120,7 +121,7 @@ SC.btOf = cur => {
 SC.filter = (stocks, o) => {
   const out = [];
   for (const s of stocks) {
-    if (o.univ && s.idx !== o.univ) continue;
+    if (o.univ ? s.idx !== o.univ : s.idx === 'etf') continue;
     if (o.mkt && s.mkt !== o.mkt) continue;
     if (o.ind && s.ind !== o.ind) continue;
     if (o.v20 && s.v20 != null && s.v20 < o.v20) continue;
@@ -272,9 +273,9 @@ SC.tpslHtml = (cur, key, v20, opts = {}) => {
   const t = String(SC.V20_OPTIONS.includes(+v20) ? +v20 : 0);
   const pick = L => ({d: ((opts.wk && L.byW ? L.byW : L.by)[t] || {})[key], b: L.base[t] || {}});
   const P = T.tps.map(tp => ({tp, ...pick(T.lv[String(tp)])}));
-  const n = P[0].d && (P[0].d[String(cur.bt.h[0])] || [0])[0];
+  const n = P[0].d && (P[0].d[String(B.h[0])] || [0])[0];
   if (!n) return '';
-  const few = n < SC.BT_MIN_N, net = !!cur.bt.cost;
+  const few = n < SC.BT_MIN_N, net = !!B.cost;
   const sg = v => (v > 0 ? '+' : '') + v.toFixed(2) + '%';
   const cell = (x, h) => {
     const v = x.d[String(h)], b = x.b[String(h)];
@@ -286,8 +287,8 @@ SC.tpslHtml = (cur, key, v20, opts = {}) => {
       `基準：勝率 ${b && b[2] != null ? b[2].toFixed(1) + '%' : '—'}、平均 ${b && b[1] != null ? sg(b[1]) : '—'}`;
     return `<td title="${tip}"><b class="${c}">${v[2].toFixed(0)}%</b><span class="${v[1] > 0 ? 'up' : v[1] < 0 ? 'dn' : ''}">${sg(v[1])}</span></td>`;
   };
-  const rows = cur.bt.h.map(h => `<tr><th>${h}日</th>${P.map(x => cell(x, h)).join('')}</tr>`).join('');
-  return `<div class="bt tp" title="訊號日收盤進場；之後最高觸及停利價出場、最低觸及 −${T.sl}% 停損（跳空則以開盤價出場；同日兩者皆觸及視為先停損），最多持有 N 日，未觸發則第 N 日收盤出場。各格＝勝率（${net ? '淨' : ''}報酬 > 0）／平均${net ? '淨' : ''}報酬；金色＝平均報酬高於同期全體個股基準 1 個百分點以上。${SC.costTxt(cur.bt.cost)}">` +
+  const rows = B.h.map(h => `<tr><th>${h}日</th>${P.map(x => cell(x, h)).join('')}</tr>`).join('');
+  return `<div class="bt tp" title="訊號日收盤進場；之後最高觸及停利價出場、最低觸及 −${T.sl}% 停損（跳空則以開盤價出場；同日兩者皆觸及視為先停損），最多持有 N 日，未觸發則第 N 日收盤出場。各格＝勝率（${net ? '淨' : ''}報酬 > 0）／平均${net ? '淨' : ''}報酬；金色＝平均報酬高於同期全體個股基準 1 個百分點以上。${SC.costTxt(B.cost)}">` +
     `<span class="bt-h">🎯 停利／停損 ${T.sl}%${B.uName ? '・' + B.uName : ''}${opts.wk ? '（含週線條件）' : ''}${net ? '<small>・已扣成本</small>' : ''} <small>n=${SC.int(n)}${few ? '・樣本不足' : ''}</small></span>` +
     `<table class="tpt"><thead><tr><th></th>${P.map(x => `<th>停利 ${x.tp}%</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
 };
