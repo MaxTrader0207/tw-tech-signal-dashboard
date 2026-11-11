@@ -252,31 +252,33 @@ SC.btHtml = (cur, key, v20, opts = {}) => {
   return `<div class="bt" title="近 ${r.from || ''}～${r.to || ''} 期間，訊號首日出現後持有 N 日的表現（還原權息價）。${r.net ? SC.costTxt(r.cost) + '多方看做多獲利機率、空方看放空獲利機率' : '多方看上漲機率、空方看下跌機率'}；基準為同期所有個股。">` +
     `<span class="bt-h">📊 歷史回測${r.wk ? '（含週線條件）' : ''}${r.net ? '<small>・已扣成本</small>' : ''} <small>n=${SC.int(r.n)}${few ? '・樣本不足' : ''}</small></span>${items}</div>` + SC.tpslHtml(cur, key, v20, opts);
 };
-/* 多方停利停損回測：進場＝訊號日收盤，+5% 停利、−10% 停損，最多持有 N 日（未觸發則第 N 日收盤出場） */
+/* 多方停利停損回測：進場＝訊號日收盤，停利（5／10／15% 各自測算）、停損 −10%，最多持有 N 日（未觸發則第 N 日收盤出場）
+ * 以表格並列各停利級距：每格＝勝率（淨報酬 > 0）／平均淨報酬；滑鼠移上可看停利、停損出場比例與基準 */
 SC.tpslHtml = (cur, key, v20, opts = {}) => {
-  const T = cur && cur.bt && cur.bt.tpsl;
+  let T = cur && cur.bt && cur.bt.tpsl;
   if (!T || !/Bull/.test(key)) return '';
+  if (!T.lv) T = {sl: T.sl, tps: [T.tp], lv: {[T.tp]: T}};      // ver 16–17：單一停利 5%
   const t = String(SC.V20_OPTIONS.includes(+v20) ? +v20 : 0);
-  const src = opts.wk && T.byW ? T.byW : T.by;
-  const d = (src[t] || {})[key], base = T.base[t] || {};
-  if (!d) return '';
-  const n = (d[String(cur.bt.h[0])] || [0])[0];
+  const pick = L => ({d: ((opts.wk && L.byW ? L.byW : L.by)[t] || {})[key], b: L.base[t] || {}});
+  const P = T.tps.map(tp => ({tp, ...pick(T.lv[String(tp)])}));
+  const n = P[0].d && (P[0].d[String(cur.bt.h[0])] || [0])[0];
   if (!n) return '';
-  const few = n < SC.BT_MIN_N;
+  const few = n < SC.BT_MIN_N, net = !!cur.bt.cost;
   const sg = v => (v > 0 ? '+' : '') + v.toFixed(2) + '%';
-  const items = cur.bt.h.map(h => {
-    const v = d[String(h)], b = base[String(h)];
-    if (!v || v[2] == null) return '';
-    const diff = b && b[2] != null ? v[2] - b[2] : 0;
-    const c = few ? '' : diff >= 3 ? 'good' : diff <= -3 ? 'poor' : '';
-    const tip = `${cur.bt.cost ? '淨' : ''}中位報酬 ${sg(v[3])}；基準勝率 ${b && b[2] != null ? b[2].toFixed(1) + '%' : '—'}、基準平均 ${b && b[1] != null ? sg(b[1]) : '—'}`;
-    return `<span class="bt-i" title="${tip}"><em>${h}日</em>勝率 <b class="${c}">${v[2].toFixed(0)}%</b>` +
-      `${opts.short ? '' : `<small>（基準 ${b && b[2] != null ? b[2].toFixed(0) + '%' : '—'}）</small>`}` +
-      ` ${cur.bt.cost ? '淨均' : '平均'} <b class="${v[1] > 0 ? 'up' : v[1] < 0 ? 'dn' : ''}">${sg(v[1])}</b>` +
-      ` <small>停利 ${v[4].toFixed(0)}%／停損 ${v[5].toFixed(0)}%</small></span>`;
-  }).join('');
-  return `<div class="bt" title="訊號日收盤進場；之後最高觸及 +${T.tp}% 停利、最低觸及 −${T.sl}% 停損（跳空則以開盤價出場；同日兩者皆觸及視為先停損），最多持有 N 日，未觸發則第 N 日收盤出場。勝率＝出場報酬 > 0 的比例。${SC.costTxt(cur.bt.cost)}">` +
-    `<span class="bt-h">🎯 停利 ${T.tp}%／停損 ${T.sl}%${opts.wk && T.byW ? '（含週線條件）' : ''}${cur.bt.cost ? '<small>・已扣成本</small>' : ''} <small>n=${SC.int(n)}${few ? '・樣本不足' : ''}</small></span>${items}</div>`;
+  const cell = (x, h) => {
+    const v = x.d[String(h)], b = x.b[String(h)];
+    if (!v || v[2] == null) return '<td>—</td>';
+    const diff = b && b[2] != null ? v[1] - b[1] : 0;          // 以平均淨報酬相對基準判斷亮色
+    const c = few ? '' : diff >= 1 ? 'good' : diff <= -1 ? 'poor' : '';
+    const tip = `停利 ${x.tp}%・${h}日：勝率 ${v[2].toFixed(1)}%、${net ? '平均淨報酬' : '平均報酬'} ${sg(v[1])}、中位 ${sg(v[3])}；` +
+      `停利出場 ${v[4].toFixed(0)}%、停損出場 ${v[5].toFixed(0)}%、到期出場 ${(100 - v[4] - v[5]).toFixed(0)}%｜` +
+      `基準：勝率 ${b && b[2] != null ? b[2].toFixed(1) + '%' : '—'}、平均 ${b && b[1] != null ? sg(b[1]) : '—'}`;
+    return `<td title="${tip}"><b class="${c}">${v[2].toFixed(0)}%</b><span class="${v[1] > 0 ? 'up' : v[1] < 0 ? 'dn' : ''}">${sg(v[1])}</span></td>`;
+  };
+  const rows = cur.bt.h.map(h => `<tr><th>${h}日</th>${P.map(x => cell(x, h)).join('')}</tr>`).join('');
+  return `<div class="bt tp" title="訊號日收盤進場；之後最高觸及停利價出場、最低觸及 −${T.sl}% 停損（跳空則以開盤價出場；同日兩者皆觸及視為先停損），最多持有 N 日，未觸發則第 N 日收盤出場。各格＝勝率（${net ? '淨' : ''}報酬 > 0）／平均${net ? '淨' : ''}報酬；金色＝平均報酬高於同期全體個股基準 1 個百分點以上。${SC.costTxt(cur.bt.cost)}">` +
+    `<span class="bt-h">🎯 停利／停損 ${T.sl}%${opts.wk ? '（含週線條件）' : ''}${net ? '<small>・已扣成本</small>' : ''} <small>n=${SC.int(n)}${few ? '・樣本不足' : ''}</small></span>` +
+    `<table class="tpt"><thead><tr><th></th>${P.map(x => `<th>停利 ${x.tp}%</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
 };
 SC.costTxt = c => c ? `已扣交易成本：手續費 ${c.fee}%（買賣各一次）、證交稅 ${c.tax}%（賣出）${c.lend ? `、融券借券費 ${c.lend}%（放空）` : ''}。` : '';
 SC.btPeriod = cur => cur && cur.bt && cur.bt.from ? `${cur.bt.from}～${cur.bt.to}` : '';

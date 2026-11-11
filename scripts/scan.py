@@ -57,14 +57,15 @@ def short_net(g):
     return (1 - FEE - TAX - LEND) - (1 + g) * (1 + FEE)
 
 
-TP_PCT, SL_PCT = 0.05, 0.10        # 多方停利停損回測：進場價（訊號日收盤）+5% 停利、−10% 停損，最多持有 HORIZONS 日
+TP_LEVELS = (0.05, 0.10, 0.15)     # 多方停利停損回測：停利級距（各自獨立測算）
+SL_PCT = 0.10                      # 停損 −10%；進場價＝訊號日收盤，最多持有 HORIZONS 日
 
 
-def tpsl_returns(o, h, l, c):
+def tpsl_returns(o, h, l, c, tp_pct):
     """多方停利／停損出場模擬（向量化）。o/h/l/c 為同一檔個股的還原價 numpy 陣列。
     第 i 日收盤進場，之後第 1..H 日逐日檢查：
       開盤即跌破停損價或跳空越過停利價 → 以開盤價出場；
-      否則盤中最低觸及停損 → −10%；最高觸及停利 → +5%（同一天兩者都碰到時保守視為先停損）。
+      否則盤中最低觸及停損 → −SL_PCT；最高觸及停利 → +tp_pct（同一天兩者都碰到時保守視為先停損）。
     回傳 (first, ret)：first＝首次觸發是第幾天（0 起算，未觸發為 H），ret＝觸發時的報酬。"""
     H = max(HORIZONS)
     L = c.size
@@ -72,7 +73,7 @@ def tpsl_returns(o, h, l, c):
     win = lambda a: np.lib.stride_tricks.sliding_window_view(np.concatenate([a[1:], pad, [np.nan]]), H)[:L]
     O, Hh, Ll = win(o), win(h), win(l)
     E = c[:, None]
-    sl, tp = E * (1 - SL_PCT), E * (1 + TP_PCT)
+    sl, tp = E * (1 - SL_PCT), E * (1 + tp_pct)
     with np.errstate(invalid="ignore"):
         o_sl, o_tp = O <= sl, O >= tp
         hit = (Ll <= sl) | (Hh >= tp) | o_sl | o_tp
@@ -82,7 +83,7 @@ def tpsl_returns(o, h, l, c):
     fi = np.minimum(first, H - 1)
     Of, Lf = O[r, fi], Ll[r, fi]
     ret = np.where(o_sl[r, fi] | o_tp[r, fi], Of / c - 1,
-                   np.where(Lf <= c * (1 - SL_PCT), -SL_PCT, TP_PCT))
+                   np.where(Lf <= c * (1 - SL_PCT), -SL_PCT, tp_pct))
     return first, np.where(has, ret, np.nan)
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
@@ -462,8 +463,9 @@ class Backtest:
         # 以欄位陣列儲存（2024 年起約 140 萬筆基準樣本，避免大量 Python 物件占用記憶體）
         self._v20 = array("d")                               # 事件當日 20 日均量（張）
         self._ret = {h: array("d") for h in HORIZONS}       # 持有 h 日報酬，超出資料範圍為 NaN
-        self._tp = {h: array("d") for h in HORIZONS}        # 停利停損出場報酬（最多持有 h 日，未觸發則第 h 日收盤出場）
-        self._tx = {h: bytearray() for h in HORIZONS}       # 出場方式：0＝到期、1＝停利、2＝停損
+        # 停利停損出場報酬（各停利級距 × 最多持有 h 日，未觸發則第 h 日收盤出場）；出場方式 0＝到期、1＝停利、2＝停損
+        self._tp = {(tp, h): array("f") for tp in TP_LEVELS for h in HORIZONS}
+        self._tx = {(tp, h): bytearray() for tp in TP_LEVELS for h in HORIZONS}
         self._wb = bytearray()                               # 多方週線條件：上週週收盤 > 週MA30 且週MACD柱 > 0
         self._wd = bytearray()                               # 空方週線條件：上週週收盤跌破週 MA30
         self.ev = {}                                         # 訊號 key -> 基準樣本索引 array("l")
@@ -475,9 +477,10 @@ class Backtest:
         px = [r["adj"] for r in rows] if all(r.get("adj") for r in rows) else [r["close"] for r in rows]
         fac = np.array([p / r["close"] if r["close"] else 1.0 for p, r in zip(px, rows)])
         cA = np.array(px, dtype=float)
-        first, tret = tpsl_returns(np.array([r.get("open") or r["close"] for r in rows], dtype=float) * fac,
-                                   np.array([r["high"] for r in rows], dtype=float) * fac,
-                                   np.array([r["low"] for r in rows], dtype=float) * fac, cA)
+        oA = np.array([r.get("open") or r["close"] for r in rows], dtype=float) * fac
+        hA = np.array([r["high"] for r in rows], dtype=float) * fac
+        lA = np.array([r["low"] for r in rows], dtype=float) * fac
+        sims = {tp: tpsl_returns(oA, hA, lA, cA, tp) for tp in TP_LEVELS}
         vol = [r.get("volume", 0) for r in rows]
         csum = [0]
         for v in vol:
@@ -497,12 +500,13 @@ class Backtest:
             for h in HORIZONS:
                 cr = px[i + h] / px[i] - 1 if i + h < L else nan
                 self._ret[h].append(cr)
-                if first[i] < h:
-                    self._tp[h].append(float(tret[i]))
-                    self._tx[h].append(1 if tret[i] > 0 else 2)
-                else:
-                    self._tp[h].append(cr)
-                    self._tx[h].append(0)
+                for tp, (first, tret) in sims.items():
+                    if first[i] < h:
+                        self._tp[tp, h].append(float(tret[i]))
+                        self._tx[tp, h].append(1 if tret[i] > 0 else 2)
+                    else:
+                        self._tp[tp, h].append(cr)
+                        self._tx[tp, h].append(0)
             ws = last_week_state(wk_of_row, weeks, i)
             self._wb.append(1 if wk_bull(ws) else 0)
             self._wd.append(1 if wk_bear(ws) else 0)
@@ -540,15 +544,15 @@ class Backtest:
         X = L if bull else S
         return [n, pct(X.mean()), round(float((X > 0).sum()) / n * 100, 1), pct(np.median(X))]   # n、淨均、勝率、淨中位
 
-    def _tpsl(self, idx, t, h, weekly=False):
+    def _tpsl(self, idx, t, tp, h, weekly=False):
         """多方停利停損統計（扣除交易成本）：[n, 平均淨報酬%, 勝率%(淨報酬>0), 中位報酬%, 停利出場%, 停損出場%]。"""
-        v20, r, x = self.V20, self.TP[h], self.TX[h]
+        v20, r, x = self.V20, self.TP[tp, h], self.TX[tp, h]
         if idx is not None:
             v20, r, x = v20[idx], r[idx], x[idx]
         m = (v20 >= t) & ~np.isnan(r)
         if weekly:
             m &= (self.WB if idx is None else self.WB[idx])
-        xs, ex = long_net(r[m]), x[m]
+        xs, ex = long_net(r[m].astype(np.float64)), x[m]
         n = int(xs.size)
         if not n:
             return [0, None, None, None, None, None]
@@ -560,8 +564,8 @@ class Backtest:
         self.V20 = np.frombuffer(self._v20, dtype=np.float64)
         self.R = {h: np.frombuffer(a, dtype=np.float64) for h, a in self._ret.items()}
         self.WB = np.frombuffer(bytes(self._wb), dtype=np.uint8).astype(bool)
-        self.TP = {h: np.frombuffer(a, dtype=np.float64) for h, a in self._tp.items()}
-        self.TX = {h: np.frombuffer(bytes(a), dtype=np.uint8) for h, a in self._tx.items()}
+        self.TP = {k: np.frombuffer(a, dtype=np.float32) for k, a in self._tp.items()}
+        self.TX = {k: np.frombuffer(bytes(a), dtype=np.uint8) for k, a in self._tx.items()}
         self.WD = np.frombuffer(bytes(self._wd), dtype=np.uint8).astype(bool)
         ev = {k: np.frombuffer(a, dtype=np.int64) if a.itemsize == 8 else np.array(a, dtype=np.int64)
               for k, a in self.ev.items()}
@@ -574,13 +578,15 @@ class Backtest:
                             for k, ix in ev.items()} for t in V_THRESH},
             "byW": {str(t): {k: {str(h): self._stats(ix, t, h, "Bull" in k, weekly=True) for h in HORIZONS}
                              for k, ix in ev.items()} for t in V_THRESH},
-            "tpsl": {   # 多方：停利 +5%／停損 −10%，最多持有 h 日
-                "tp": TP_PCT * 100, "sl": SL_PCT * 100,
-                "base": {str(t): {str(h): self._tpsl(None, t, h) for h in HORIZONS} for t in V_THRESH},
-                "by": {str(t): {k: {str(h): self._tpsl(ix, t, h) for h in HORIZONS}
-                                for k, ix in ev.items() if "Bull" in k} for t in V_THRESH},
-                "byW": {str(t): {k: {str(h): self._tpsl(ix, t, h, weekly=True) for h in HORIZONS}
-                                 for k, ix in ev.items() if "Bull" in k} for t in V_THRESH},
+            "tpsl": {   # 多方：各停利級距／停損 −10%，最多持有 h 日
+                "sl": round(SL_PCT * 100), "tps": [round(tp * 100) for tp in TP_LEVELS],
+                "lv": {str(round(tp * 100)): {
+                    "base": {str(t): {str(h): self._tpsl(None, t, tp, h) for h in HORIZONS} for t in V_THRESH},
+                    "by": {str(t): {k: {str(h): self._tpsl(ix, t, tp, h) for h in HORIZONS}
+                                    for k, ix in ev.items() if "Bull" in k} for t in V_THRESH},
+                    "byW": {str(t): {k: {str(h): self._tpsl(ix, t, tp, h, weekly=True) for h in HORIZONS}
+                                     for k, ix in ev.items() if "Bull" in k} for t in V_THRESH},
+                } for tp in TP_LEVELS},
             },
         }
 
@@ -634,7 +640,7 @@ def build_payload(stocks, prices, now):
     fresh.sort(key=lambda x: x["id"])
     return {
         "date": max_date,
-        "ver": 17,                      # …10：新增 maBull10；11：週MACD柱>0；12：多方週線條件改為週K收紅且站上週MA30；13：移除 maBull10、多方週線條件改為週收站上週MA30；14：多方再加週MACD柱>0；15：空方改為週收跌破週MA30；16：多方停利停損回測 tpsl；17：回測扣除交易成本
+        "ver": 18,                      # …10：新增 maBull10；11：週MACD柱>0；12：多方週線條件改為週K收紅且站上週MA30；13：移除 maBull10、多方週線條件改為週收站上週MA30；14：多方再加週MACD柱>0；15：空方改為週收跌破週MA30；16：多方停利停損回測 tpsl；17：回測扣除交易成本；18：停利 5／10／15% 三級距
         "generated_at": now.isoformat(timespec="seconds"),
         "source": "Yahoo Finance 日線與配息（yfinance）；股票清單：臺灣證券交易所 ISIN 公告／OpenAPI",
         "stats": {
