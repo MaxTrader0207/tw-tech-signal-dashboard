@@ -246,7 +246,33 @@ SC.btHtml = (cur, key, v20, opts = {}) => {
       ` ${x.retLabel} <b class="${rc}">${x.ret > 0 ? '+' : ''}${x.ret.toFixed(2)}%</b></span>`;
   }).join('');
   return `<div class="bt" title="近 ${r.from || ''}～${r.to || ''} 期間，訊號首日出現後持有 N 日的表現（還原權息價）。多方看上漲機率、空方看下跌機率；基準為同期所有個股。">` +
-    `<span class="bt-h">📊 歷史回測${r.wk ? '（含週線條件）' : ''} <small>n=${SC.int(r.n)}${few ? '・樣本不足' : ''}</small></span>${items}</div>`;
+    `<span class="bt-h">📊 歷史回測${r.wk ? '（含週線條件）' : ''} <small>n=${SC.int(r.n)}${few ? '・樣本不足' : ''}</small></span>${items}</div>` + SC.tpslHtml(cur, key, v20, opts);
+};
+/* 多方停利停損回測：進場＝訊號日收盤，+5% 停利、−10% 停損，最多持有 N 日（未觸發則第 N 日收盤出場） */
+SC.tpslHtml = (cur, key, v20, opts = {}) => {
+  const T = cur && cur.bt && cur.bt.tpsl;
+  if (!T || !/Bull/.test(key)) return '';
+  const t = String(SC.V20_OPTIONS.includes(+v20) ? +v20 : 0);
+  const src = opts.wk && T.byW ? T.byW : T.by;
+  const d = (src[t] || {})[key], base = T.base[t] || {};
+  if (!d) return '';
+  const n = (d[String(cur.bt.h[0])] || [0])[0];
+  if (!n) return '';
+  const few = n < SC.BT_MIN_N;
+  const sg = v => (v > 0 ? '+' : '') + v.toFixed(2) + '%';
+  const items = cur.bt.h.map(h => {
+    const v = d[String(h)], b = base[String(h)];
+    if (!v || v[2] == null) return '';
+    const diff = b && b[2] != null ? v[2] - b[2] : 0;
+    const c = few ? '' : diff >= 3 ? 'good' : diff <= -3 ? 'poor' : '';
+    const tip = `中位報酬 ${sg(v[3])}；基準勝率 ${b && b[2] != null ? b[2].toFixed(1) + '%' : '—'}、基準平均 ${b && b[1] != null ? sg(b[1]) : '—'}`;
+    return `<span class="bt-i" title="${tip}"><em>${h}日</em>勝率 <b class="${c}">${v[2].toFixed(0)}%</b>` +
+      `${opts.short ? '' : `<small>（基準 ${b && b[2] != null ? b[2].toFixed(0) + '%' : '—'}）</small>`}` +
+      ` 平均 <b class="${v[1] > 0 ? 'up' : v[1] < 0 ? 'dn' : ''}">${sg(v[1])}</b>` +
+      ` <small>停利 ${v[4].toFixed(0)}%／停損 ${v[5].toFixed(0)}%</small></span>`;
+  }).join('');
+  return `<div class="bt" title="訊號日收盤進場；之後最高觸及 +${T.tp}% 停利、最低觸及 −${T.sl}% 停損（跳空則以開盤價出場；同日兩者皆觸及視為先停損），最多持有 N 日，未觸發則第 N 日收盤出場。勝率＝出場報酬 > 0 的比例。">` +
+    `<span class="bt-h">🎯 停利 ${T.tp}%／停損 ${T.sl}%${opts.wk && T.byW ? '（含週線條件）' : ''} <small>n=${SC.int(n)}${few ? '・樣本不足' : ''}</small></span>${items}</div>`;
 };
 SC.btPeriod = cur => cur && cur.bt && cur.bt.from ? `${cur.bt.from}～${cur.bt.to}` : '';
 
