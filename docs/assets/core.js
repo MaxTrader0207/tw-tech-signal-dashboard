@@ -108,9 +108,19 @@ SC.macdTxt = (s, B) => SC.fam(s, B).macd.map(t => t === 'Cross' ? (B === 'Bull' 
  *   wk：週線濾網——多方訊號需上週週收盤 > 上週週 MA30 且上週週 MACD 柱狀體 > 0，空方訊號需上週週收盤跌破上週週 MA30
  *   wkStrict：資料有週線欄位（ver ≥ 4）時，缺週線資料的個股不保留訊號
  * 回傳的個股物件 sig 已依「排除除息影響／只看新增」過濾（原物件不變）。 */
+/* 標的範圍：全市場／0050 成分股／中型100 成分股（ver 19 起個股帶 idx；回測另有 bt.u 分組） */
+SC.UNIV = {tw50: '0050 成分股', mid100: '中型100 成分股'};
+SC.univ = '';
+SC.btOf = cur => {
+  const bt = cur && cur.bt;
+  if (!bt) return null;
+  const u = SC.univ && bt.u && bt.u[SC.univ];
+  return u ? {...bt, ...u, uName: SC.UNIV[SC.univ]} : bt;
+};
 SC.filter = (stocks, o) => {
   const out = [];
   for (const s of stocks) {
+    if (o.univ && s.idx !== o.univ) continue;
     if (o.mkt && s.mkt !== o.mkt) continue;
     if (o.ind && s.ind !== o.ind) continue;
     if (o.v20 && s.v20 != null && s.v20 < o.v20) continue;
@@ -212,7 +222,7 @@ SC.sigTag = (s, k) =>
 /* ---------- 歷史回測 ----------
  * 勝率：多方訊號＝做多淨報酬 > 0 的機率；空方訊號＝放空淨報酬 > 0 的機率（ver 17 起扣除交易成本；舊資料為漲／跌機率）。基準＝同期所有個股每日持有報酬。 */
 SC.bt = (cur, key, v20, wk) => {
-  const bt = cur && cur.bt;
+  const bt = SC.btOf(cur);
   if (!bt || !bt.by) return null;
   const t = String(SC.V20_OPTIONS.includes(+v20) ? +v20 : 0);
   const src = wk && bt.byW ? bt.byW : bt.by;
@@ -232,7 +242,7 @@ SC.bt = (cur, key, v20, wk) => {
             retLabel: med == null ? '均報' : net ? (bull ? '淨中位' : '放空淨中位') : '中位報酬',
             win: v[2], baseWin, baseRet};
   });
-  return {rows, n: rows[0].n, bull, net: !!bt.cost, cost: bt.cost, from: bt.from, to: bt.to, wk: !!(wk && bt.byW)};
+  return {rows, n: rows[0].n, bull, uName: bt.uName, net: !!bt.cost, cost: bt.cost, from: bt.from, to: bt.to, wk: !!(wk && bt.byW)};
 };
 SC.btHtml = (cur, key, v20, opts = {}) => {
   const r = SC.bt(cur, key, v20, opts.wk);
@@ -250,12 +260,13 @@ SC.btHtml = (cur, key, v20, opts = {}) => {
       ` ${x.retLabel} <b class="${rc}">${x.ret > 0 ? '+' : ''}${x.ret.toFixed(2)}%</b></span>`;
   }).join('');
   return `<div class="bt" title="近 ${r.from || ''}～${r.to || ''} 期間，訊號首日出現後持有 N 日的表現（還原權息價）。${r.net ? SC.costTxt(r.cost) + '多方看做多獲利機率、空方看放空獲利機率' : '多方看上漲機率、空方看下跌機率'}；基準為同期所有個股。">` +
-    `<span class="bt-h">📊 歷史回測${r.wk ? '（含週線條件）' : ''}${r.net ? '<small>・已扣成本</small>' : ''} <small>n=${SC.int(r.n)}${few ? '・樣本不足' : ''}</small></span>${items}</div>` + SC.tpslHtml(cur, key, v20, opts);
+    `<span class="bt-h">📊 歷史回測${r.uName ? '・' + r.uName : ''}${r.wk ? '（含週線條件）' : ''}${r.net ? '<small>・已扣成本</small>' : ''} <small>n=${SC.int(r.n)}${few ? '・樣本不足' : ''}</small></span>${items}</div>` + SC.tpslHtml(cur, key, v20, opts);
 };
 /* 多方停利停損回測：進場＝訊號日收盤，停利（5／10／15% 各自測算）、停損 −10%，最多持有 N 日（未觸發則第 N 日收盤出場）
  * 以表格並列各停利級距：每格＝勝率（淨報酬 > 0）／平均淨報酬；滑鼠移上可看停利、停損出場比例與基準 */
 SC.tpslHtml = (cur, key, v20, opts = {}) => {
-  let T = cur && cur.bt && cur.bt.tpsl;
+  const B = SC.btOf(cur);
+  let T = B && B.tpsl;
   if (!T || !/Bull/.test(key)) return '';
   if (!T.lv) T = {sl: T.sl, tps: [T.tp], lv: {[T.tp]: T}};      // ver 16–17：單一停利 5%
   const t = String(SC.V20_OPTIONS.includes(+v20) ? +v20 : 0);
@@ -277,7 +288,7 @@ SC.tpslHtml = (cur, key, v20, opts = {}) => {
   };
   const rows = cur.bt.h.map(h => `<tr><th>${h}日</th>${P.map(x => cell(x, h)).join('')}</tr>`).join('');
   return `<div class="bt tp" title="訊號日收盤進場；之後最高觸及停利價出場、最低觸及 −${T.sl}% 停損（跳空則以開盤價出場；同日兩者皆觸及視為先停損），最多持有 N 日，未觸發則第 N 日收盤出場。各格＝勝率（${net ? '淨' : ''}報酬 > 0）／平均${net ? '淨' : ''}報酬；金色＝平均報酬高於同期全體個股基準 1 個百分點以上。${SC.costTxt(cur.bt.cost)}">` +
-    `<span class="bt-h">🎯 停利／停損 ${T.sl}%${opts.wk ? '（含週線條件）' : ''}${net ? '<small>・已扣成本</small>' : ''} <small>n=${SC.int(n)}${few ? '・樣本不足' : ''}</small></span>` +
+    `<span class="bt-h">🎯 停利／停損 ${T.sl}%${B.uName ? '・' + B.uName : ''}${opts.wk ? '（含週線條件）' : ''}${net ? '<small>・已扣成本</small>' : ''} <small>n=${SC.int(n)}${few ? '・樣本不足' : ''}</small></span>` +
     `<table class="tpt"><thead><tr><th></th>${P.map(x => `<th>停利 ${x.tp}%</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
 };
 SC.costTxt = c => c ? `已扣交易成本：手續費 ${c.fee}%（買賣各一次）、證交稅 ${c.tax}%（賣出）${c.lend ? `、融券借券費 ${c.lend}%（放空）` : ''}。` : '';

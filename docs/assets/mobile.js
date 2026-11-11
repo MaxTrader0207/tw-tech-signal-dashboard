@@ -12,12 +12,14 @@ const opt = {exx: false, nw: false, watchOnly: false, wk: true};
 
 /* ---------- 偏好 ---------- */
 $('v20').value = SC.prefs.get('v20', '100');
+$('univ').value = SC.prefs.get('univ', ''); SC.univ = $('univ').value;
 opt.exx = SC.prefs.get('exx', '') === '1';
 opt.nw = SC.prefs.get('new', '') === '1';
 opt.watchOnly = SC.prefs.get('watchOnly', '') === '1';
 opt.wk = SC.prefs.get('wk', '1') === '1';
 const saveOpts = () => {
   SC.prefs.set('v20', $('v20').value);
+  SC.prefs.set('univ', $('univ').value); SC.univ = $('univ').value;
   SC.prefs.set('exx', opt.exx ? '1' : ''); SC.prefs.set('new', opt.nw ? '1' : ''); SC.prefs.set('watchOnly', opt.watchOnly ? '1' : ''); SC.prefs.set('wk', opt.wk ? '1' : '0');
 };
 const syncTg = () => {
@@ -31,7 +33,7 @@ syncTg();
 
 /* ---------- 計算 ---------- */
 function compute() {
-  results = SC.filter(cur.stocks, {mkt: $('mkt').value, ind: $('ind').value, v20: +$('v20').value, exx: opt.exx, nw: opt.nw,
+  results = SC.filter(cur.stocks, {univ: $('univ').value, mkt: $('mkt').value, ind: $('ind').value, v20: +$('v20').value, exx: opt.exx, nw: opt.nw,
     watchOnly: opt.watchOnly, wk: opt.wk, wkStrict: (cur.ver || 1) >= 4});
   ({lists, xi} = SC.build(results));
 }
@@ -255,6 +257,7 @@ function refilter(keepOpen) {
   renderKpis(); renderMain();
 }
 $('mkt').addEventListener('change', () => refilter());
+$('univ').addEventListener('change', () => { saveOpts(); refilter(); });
 $('ind').addEventListener('change', () => refilter());
 $('v20').addEventListener('change', () => { saveOpts(); refilter(); });
 for (const [id, k] of [['wkF', 'wk'], ['exx', 'exx'], ['newOnly', 'nw'], ['watchOnly', 'watchOnly']]) {
@@ -280,6 +283,7 @@ async function show(date) {
       (ver < 2 ? '｜⚠ 舊格式資料，均量／除息／新增標記不適用' : ver < 3 ? '｜此日期尚無歷史回測' : '') +
       (ver < 4 ? '｜⚠ 尚無週線資訊，週線濾網不適用' : ver < 5 ? '｜⚠ 舊版週線條件（多方：週收站上週MA10）'
         : ver < 6 ? '｜⚠ 舊版週線條件（多方：週MA10上揚）' : ver < 7 ? '｜⚠ 舊版週線條件（多方：週RSI6>50）' : ver < 9 ? '｜⚠ 多方均線交叉為舊版視窗（舊資料）' : '') +
+      (ver < 19 ? '｜無成分股標記' : cur.groups && cur.groups.tw50 ? `｜成分股 ${cur.groups.tw50.d || ''}` : '') +
       (ver >= 4 && ver < 15 ? '｜⚠ 舊版週線條件' : '');
     fillIndustries(); refilter();
   } catch (e) { $('err').textContent = `無法載入 ${date} 的資料：${e.message}`; }

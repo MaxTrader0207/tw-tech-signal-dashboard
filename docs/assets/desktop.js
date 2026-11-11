@@ -12,19 +12,21 @@ tick(); setInterval(tick, 1000);
 
 /* 偏好還原 */
 $('v20').value = SC.prefs.get('v20', '100');
+$('univ').value = SC.prefs.get('univ', ''); SC.univ = $('univ').value;
 $('exx').checked = SC.prefs.get('exx', '') === '1';
 $('newOnly').checked = SC.prefs.get('new', '') === '1';
 $('watchOnly').checked = SC.prefs.get('watchOnly', '') === '1';
 $('wkF').checked = SC.prefs.get('wk', '1') === '1';
 const saveOpts = () => {
   SC.prefs.set('v20', $('v20').value);
+  SC.prefs.set('univ', $('univ').value); SC.univ = $('univ').value;
   SC.prefs.set('exx', $('exx').checked ? '1' : '');
   SC.prefs.set('new', $('newOnly').checked ? '1' : '');
   SC.prefs.set('watchOnly', $('watchOnly').checked ? '1' : '');
   SC.prefs.set('wk', $('wkF').checked ? '1' : '0');
 };
 const opts = () => ({
-  mkt: $('mkt').value, ind: $('ind').value, v20: +$('v20').value,
+  univ: $('univ').value, mkt: $('mkt').value, ind: $('ind').value, v20: +$('v20').value,
   exx: $('exx').checked, nw: $('newOnly').checked, watchOnly: $('watchOnly').checked,
   wk: $('wkF').checked, wkStrict: !!cur && (cur.ver || 1) >= 4,
 });
@@ -218,6 +220,7 @@ async function show(date) {
       (ver < 4 ? '｜⚠ 此日期資料尚無週線資訊，週線濾網不適用' : ver < 5 ? '｜⚠ 此日期為舊版週線條件（多方：週收盤站上週MA10）'
         : ver < 6 ? '｜⚠ 此日期為舊版週線條件（多方：週MA10上揚）' : ver < 7 ? '｜⚠ 此日期為舊版週線條件（多方：週RSI6>50，未含上揚）' : ver < 9 ? '｜⚠ 此日期資料的多方均線交叉為舊版視窗（非當日）' : '') +
       (ver >= 4 && ver < 14 ? '｜⚠ 此日期為舊版多方週線條件（非週收站上週MA30且週MACD柱>0）' : '') +
+      (ver < 19 ? '｜此日期資料無成分股標記（標的範圍不適用）' : cur.groups && cur.groups.tw50 ? `｜成分股名單 ${cur.groups.tw50.d || ''}` : '') +
       (ver >= 4 && ver < 15 ? '｜⚠ 此日期為舊版空方週線條件（週收跌破週MA10）' : '');
     $('btNote').innerHTML = cur.bt
       ? `<span>📊 歷史回測期間 ${SC.btPeriod(cur)}：訊號首日出現後持有 3／5／10／20 個交易日，${cur.bt.cost ? `已扣交易成本（手續費 ${cur.bt.cost.fee}% 買賣各一次、證交稅 ${cur.bt.cost.tax}%、放空另加借券費 ${cur.bt.cost.lend}%），多方看做多獲利機率、空方看放空獲利機率` : '多方看上漲機率、空方看下跌機率'}；<b style="color:var(--accent)">金色</b>＝高於同期全體個股基準 3 個百分點以上。回測結果隨「20 日均量」篩選切換。</span>`
@@ -249,7 +252,7 @@ async function init() {
 $('date').addEventListener('change', e => show(e.target.value));
 $('mkt').addEventListener('change', refreshBoard);
 $('ind').addEventListener('change', refreshBoard);
-['v20', 'exx', 'newOnly', 'watchOnly', 'wkF'].forEach(id => $(id).addEventListener('change', () => { saveOpts(); refreshBoard(); }));
+['univ', 'v20', 'exx', 'newOnly', 'watchOnly', 'wkF'].forEach(id => $(id).addEventListener('change', () => { saveOpts(); refreshBoard(); }));
 const applyWatchInput = () => { SC.watch.setAll(SC.parseIds($('watchInput').value)); syncWatchUI(); refreshBoard(); };
 $('watchInput').addEventListener('keydown', e => { if (e.key === 'Enter') applyWatchInput(); });
 $('watchInput').addEventListener('change', applyWatchInput);

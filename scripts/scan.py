@@ -166,6 +166,41 @@ def _dedupe(stocks):
     return uniq
 
 
+# ---------------------------------------------------------------- 1b. 指數成分股
+# 標的範圍：0050（臺灣50指數）與 0051（臺灣中型100指數）的最新持股＝指數成分股
+INDEX_GROUPS = {   # key：前端代碼、回測分組代碼（1 起）、ETF、名稱、最少檔數（低於視為抓取異常）
+    "tw50": (1, "0050", "0050 成分股", 45),
+    "mid100": (2, "0051", "中型100 成分股", 90),
+}
+
+
+def index_members():
+    """自 MoneyDJ ETF 全部持股頁抓取成分股代號；任一組失敗時沿用上次快取（DATA/members.json）。"""
+    cache = DATA / "members.json"
+    old = json.loads(cache.read_text(encoding="utf-8")) if cache.exists() else {}
+    out = {}
+    for key, (_, etf, name, min_n) in INDEX_GROUPS.items():
+        try:
+            r = requests.get(f"https://www.moneydj.com/ETF/X/Basic/Basic0007B.xdjhtm?etfid={etf}.TW", headers=UA, timeout=30)
+            r.raise_for_status()
+            t = r.content.decode("utf-8", "ignore")
+            codes = list(dict.fromkeys(re.findall(r">[^<>]{1,30}\((\d{4})\.TW\)<", t)))
+            if len(codes) < min_n:
+                raise ValueError(f"只有 {len(codes)} 檔")
+            m = re.search(r"資料日期[^0-9]{0,40}(\d{4}/\d{1,2}/\d{1,2})", t)
+            out[key] = {"name": name, "etf": etf, "d": m.group(1) if m else None, "ids": codes}
+            log(f"[成分股] {name} {len(codes)} 檔（{out[key]['d']}）")
+        except Exception as e:  # noqa: BLE001
+            if key in old:
+                out[key] = old[key]
+                log(f"[成分股] {name} 抓取失敗（{e}），沿用快取 {old[key].get('d')}")
+            else:
+                log(f"[成分股] {name} 抓取失敗（{e}），且無快取")
+    if out:
+        dump(cache, out)
+    return out
+
+
 def stock_universe(now):
     """股票清單：快取 LIST_CACHE_DAYS 天（含產業別），期間內以 OpenAPI 補新上市、剔除已下市。"""
     cache = DATA / "universe.json"
@@ -466,12 +501,14 @@ class Backtest:
         # 停利停損出場報酬（各停利級距 × 最多持有 h 日，未觸發則第 h 日收盤出場）；出場方式 0＝到期、1＝停利、2＝停損
         self._tp = {(tp, h): array("f") for tp in TP_LEVELS for h in HORIZONS}
         self._tx = {(tp, h): bytearray() for tp in TP_LEVELS for h in HORIZONS}
+        self._g = bytearray()                                # 標的範圍分組：0＝其他、INDEX_GROUPS 的代碼（目前成分股）
+        self.UM = None                                       # 統計時套用的標的範圍遮罩（None＝全市場）
         self._wb = bytearray()                               # 多方週線條件：上週週收盤 > 週MA30 且週MACD柱 > 0
         self._wd = bytearray()                               # 空方週線條件：上週週收盤跌破週 MA30
         self.ev = {}                                         # 訊號 key -> 基準樣本索引 array("l")
         self.d0, self.d1 = None, None
 
-    def add(self, rows, flags):
+    def add(self, rows, flags, grp=0):
         if len(rows) < MIN_BARS + 2:
             return
         px = [r["adj"] for r in rows] if all(r.get("adj") for r in rows) else [r["close"] for r in rows]
@@ -507,6 +544,7 @@ class Backtest:
                     else:
                         self._tp[tp, h].append(cr)
                         self._tx[tp, h].append(0)
+            self._g.append(grp)
             ws = last_week_state(wk_of_row, weeks, i)
             self._wb.append(1 if wk_bull(ws) else 0)
             self._wd.append(1 if wk_bear(ws) else 0)
@@ -529,6 +567,8 @@ class Backtest:
         if idx is not None:
             v20, r = v20[idx], r[idx]
         m = (v20 >= t) & ~np.isnan(r)
+        if self.UM is not None:
+            m &= (self.UM if idx is None else self.UM[idx])
         if weekly:
             w = self.WB if bull else self.WD
             m &= (w if idx is None else w[idx])
@@ -550,6 +590,8 @@ class Backtest:
         if idx is not None:
             v20, r, x = v20[idx], r[idx], x[idx]
         m = (v20 >= t) & ~np.isnan(r)
+        if self.UM is not None:
+            m &= (self.UM if idx is None else self.UM[idx])
         if weekly:
             m &= (self.WB if idx is None else self.WB[idx])
         xs, ex = long_net(r[m].astype(np.float64)), x[m]
@@ -569,10 +611,24 @@ class Backtest:
         self.WD = np.frombuffer(bytes(self._wd), dtype=np.uint8).astype(bool)
         ev = {k: np.frombuffer(a, dtype=np.int64) if a.itemsize == 8 else np.array(a, dtype=np.int64)
               for k, a in self.ev.items()}
+        G = np.frombuffer(bytes(self._g), dtype=np.uint8)
         log(f"[回測] {BT_START} 起，基準樣本 {self.V20.size:,} 筆，訊號 {len(ev)} 種")
-        return {
+        out = {
             "from": self.d0, "to": self.d1, "h": list(HORIZONS),
             "cost": {"fee": round(FEE * 100, 4), "tax": round(TAX * 100, 4), "lend": round(LEND * 100, 4)},   # 交易成本（%），回測報酬皆為淨報酬
+            **self._pack(ev),
+        }
+        # 各標的範圍（以目前成分股回推，含存活者偏差）另算一份
+        out["u"] = {}
+        for key, (code, *_x) in INDEX_GROUPS.items():
+            self.UM = G == code
+            if self.UM.any():
+                out["u"][key] = self._pack(ev)
+        self.UM = None
+        return out
+
+    def _pack(self, ev):
+        return {
             "base": {str(t): {str(h): self._stats(None, t, h) for h in HORIZONS} for t in V_THRESH},
             "by": {str(t): {k: {str(h): self._stats(ix, t, h, "Bull" in k) for h in HORIZONS}
                             for k, ix in ev.items()} for t in V_THRESH},
@@ -591,7 +647,9 @@ class Backtest:
         }
 
 
-def build_payload(stocks, prices, now):
+def build_payload(stocks, prices, now, members=None):
+    members = members or {}
+    grp = {sid: (key, INDEX_GROUPS[key][0]) for key, g in members.items() for sid in g["ids"]}
     results, no_data, short = [], [], []
     bt = Backtest()
     cleaned = {k: drop_intraday(list(v)) for k, v in prices.items() if v}
@@ -612,7 +670,10 @@ def build_payload(stocks, prices, now):
         vols = [x["volume"] for x in rows[-VOL_AVG_N:]]
         item["v20"] = round(sum(vols) / len(vols) / 1000) if vols else 0      # 20 日均量（張）
         srows, flags = signal_series(rows)
-        bt.add(srows, flags)
+        g = grp.get(s["id"])
+        bt.add(srows, flags, g[1] if g else 0)
+        if g:
+            item["idx"] = g[0]                                  # 標的範圍：tw50／mid100
         wk_of_row, weeks = weekly_series(srows)
         ws = last_week_state(wk_of_row, weeks, len(srows) - 1)
         if ws:   # 多方條件＝上週週收盤 > 週 MA30 且週 MACD 柱 > 0；空方條件＝上週週收盤跌破週 MA30
@@ -640,14 +701,16 @@ def build_payload(stocks, prices, now):
     fresh.sort(key=lambda x: x["id"])
     return {
         "date": max_date,
-        "ver": 18,                      # …10：新增 maBull10；11：週MACD柱>0；12：多方週線條件改為週K收紅且站上週MA30；13：移除 maBull10、多方週線條件改為週收站上週MA30；14：多方再加週MACD柱>0；15：空方改為週收跌破週MA30；16：多方停利停損回測 tpsl；17：回測扣除交易成本；18：停利 5／10／15% 三級距
+        "ver": 19,                      # …10：新增 maBull10；11：週MACD柱>0；12：多方週線條件改為週K收紅且站上週MA30；13：移除 maBull10、多方週線條件改為週收站上週MA30；14：多方再加週MACD柱>0；15：空方改為週收跌破週MA30；16：多方停利停損回測 tpsl；17：回測扣除交易成本；18：停利 5／10／15% 三級距；19：標的範圍（0050／中型100 成分股）與分組回測 bt.u
         "generated_at": now.isoformat(timespec="seconds"),
-        "source": "Yahoo Finance 日線與配息（yfinance）；股票清單：臺灣證券交易所 ISIN 公告／OpenAPI",
+        "source": "Yahoo Finance 日線與配息（yfinance）；股票清單：臺灣證券交易所 ISIN 公告／OpenAPI；成分股：MoneyDJ 0050／0051 全部持股",
         "stats": {
             "universe": len(stocks), "fetched": len(prices), "scanned": len(fresh),
             "no_data": len(no_data), "insufficient": len(short), "stale": len(stale),
         },
         "excluded": {"no_data": no_data, "insufficient": short, "stale": stale},
+        "groups": {k: {"name": g["name"], "etf": g["etf"], "d": g.get("d"), "n": len(g["ids"]),
+                       "scanned": sum(1 for x in fresh if x.get("idx") == k)} for k, g in members.items()},
         "bt": bt.result(),
         "stocks": fresh,
     }
@@ -699,10 +762,11 @@ def main():
     stocks = stock_universe(now)
     if len(stocks) < 1000:
         sys.exit(f"股票清單只有 {len(stocks)} 檔，疑似來源異常，中止。")
+    members = index_members()
     t1 = time.time()
     prices = fetch_prices([ysym(s) for s in stocks])
     t2 = time.time()
-    payload = build_payload(stocks, prices, now)
+    payload = build_payload(stocks, prices, now, members)
     log(f"[耗時] 清單 {t1 - t0:.0f}s、行情 {t2 - t1:.0f}s、計算 {time.time() - t2:.0f}s")
     log(f"資料日期 {payload['date']}，統計 {payload['stats']}")
     if payload["stats"]["scanned"] < MIN_FRESH:
