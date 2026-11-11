@@ -75,6 +75,12 @@ const maBox = (n, title, list, cols, key) => box(`ma${n}`, `MA${n}`, title, list
 function render(results) {
   BLOCKS = [];
   const {lists, xi} = SC.build(results);
+  const boxCols = [
+    {h: '區間高', v: s => f2(s.sig.boxBull.hi)},
+    {h: '區間低', v: s => f2(s.sig.boxBull.lo)},
+    {h: '區間幅度', v: s => `${s.sig.boxBull.rng.toFixed(1)}%`},
+    {h: '突破幅度', v: s => `<span class="up">+${s.sig.boxBull.brk.toFixed(2)}%</span>`},
+  ];
   const maCols = n => k => [
     {h: `MA${n}`, v: s => f2(s.ma[n])},
     {h: '交叉日', v: s => md(s.sig[k + n].date)},
@@ -100,7 +106,7 @@ function render(results) {
     ...(SC.watch.size ? [['⭐ 自選命中', SC.watchHits(results), '']] : []),
     ['交集多方', SC.xTotal(xi, 'Bull'), 'bull'],
     ['交集空方', SC.xTotal(xi, 'Bear'), 'bear'],
-    ['均線多方', uniq(['maBull30', 'maBull60', 'maBull100']), 'bull'],
+    ['均線多方', uniq(['maBull30', 'maBull60', 'maBull100', 'boxBull']), 'bull'],
     ['均線空方', uniq(['maBear30', 'maBear60', 'maBear100']), 'bear'],
     ['RSI 多方', lists.rsiBull.length, 'bull'],
     ['RSI 空方', lists.rsiBear.length, 'bear'],
@@ -124,10 +130,11 @@ function render(results) {
   <section class="ind">
     <h2>📈 均線指標</h2>
     <div class="def">日線收盤價與 30／60／100 日均線交叉（多方為最近 1 個交易日、空方近 3 個交易日內發生），並搭配均線方向</div>
-    <div class="malegend"><span><i style="background:#f5b83d"></i>MA30 短期</span><span><i style="background:#4da3ff"></i>MA60 中期</span><span><i style="background:#b07cff"></i>MA100 長期</span></div>
+    <div class="malegend"><span><i style="background:#f5b83d"></i>MA30 短期</span><span><i style="background:#4da3ff"></i>MA60 中期</span><span><i style="background:#b07cff"></i>MA100 長期</span><span><i style="background:#2dd4bf"></i>箱型突破（多方）</span></div>
     <div class="sides">
       <div class="side bull"><h3>▲ 多方板塊</h3>
         ${MA_N.map(n => maBox(n, `收盤價黃金交叉 MA${n}，且 MA${n} 上揚`, lists['maBull' + n], maCols(n)('maBull'), 'maBull' + n)).join('')}
+        ${box('box', '箱型', SC.BOX_TITLE, lists.boxBull, boxCols, 'boxBull')}
       </div>
       <div class="side bear"><h3>▼ 空方板塊</h3>
         ${MA_N.map(n => maBox(n, `收盤價死亡交叉 MA${n}，且 MA${n} 下彎`, lists['maBear' + n], maCols(n)('maBear'), 'maBear' + n)).join('')}

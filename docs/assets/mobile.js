@@ -45,7 +45,7 @@ function blocksFor(t, B) {
   if (t === 'ma') return MA_N.map(n => ({
     key: `ma${B}${n}`, cls: `ma${n}`, badge: `MA${n}`, n, kind: 'ma', list: lists[`ma${B}${n}`],
     title: bull ? `收盤價黃金交叉，MA${n} 上揚` : `收盤價死亡交叉，MA${n} 下彎`,
-  }));
+  })).concat(bull ? [{key: 'boxBull', cls: 'box', badge: '箱型突破', kind: 'box', list: lists.boxBull, title: SC.BOX_TITLE}] : []);
   if (t === 'rsi') return [{key: `rsi${B}`, cls: 'rsi', badge: 'RSI(6)', kind: 'rsi', list: lists[`rsi${B}`], title: bull ? 'RSI(6) ≥ 80' : 'RSI(6) ≤ 20'}];
   if (t === 'macd') return [
     {key: `macd${B}Cross`, cls: 'oscx', badge: '交叉', kind: 'macd', list: lists[`macd${B}Cross`], title: bull ? '柱狀體由 ≤0 轉 >0' : '柱狀體由 ≥0 轉 <0'},
@@ -57,6 +57,10 @@ const sideCount = (t, B) => SC.uniq(blocksFor(t, B).map(b => b.list));
 
 /* ---------- 卡片 ---------- */
 function metrics(b, s, B) {
+  if (b.kind === 'box') {
+    const g = s.sig.boxBull;
+    return `<span>區間 <b>${f2(g.lo)}～${f2(g.hi)}</b></span><span>幅度 <b>${g.rng.toFixed(1)}%</b></span><span>突破 <b class="up">+${g.brk.toFixed(2)}%</b></span>`;
+  }
   if (b.kind === 'ma') {
     const g = s.sig[b.key];
     return `<span>MA${b.n} <b>${f2(s.ma[b.n])}</b></span><span>交叉 <b>${md(g.date)}</b></span><span>斜率 <b class="${cls(g.slope)}">${g.slope > 0 ? '+' : ''}${g.slope.toFixed(2)}</b></span>`;
@@ -216,8 +220,9 @@ window.addEventListener('popstate', () => closeSheet(true));
 /* ---------- 輸出 ---------- */
 function exportCsv(b) {
   const B = side, sideTxt = B === 'Bull' ? '多方' : '空方';
-  const extraH = {ma: [`MA${b.n}`, '交叉日', '均線斜率'], rsi: ['RSI(6)'], macd: ['OSC 前2日', 'OSC 前1日', 'OSC 今日', 'DIF', 'MACD'], x: ['均線', 'RSI(6)', 'MACD', '訊號']}[b.kind];
-  const extra = s => b.kind === 'ma' ? [f2(s.ma[b.n]), md(s.sig[b.key].date), s.sig[b.key].slope.toFixed(2)]
+  const extraH = {box: ['區間高', '區間低', '區間幅度(%)', '突破幅度(%)'], ma: [`MA${b.n}`, '交叉日', '均線斜率'], rsi: ['RSI(6)'], macd: ['OSC 前2日', 'OSC 前1日', 'OSC 今日', 'DIF', 'MACD'], x: ['均線', 'RSI(6)', 'MACD', '訊號']}[b.kind];
+  const extra = s => b.kind === 'box' ? [f2(s.sig.boxBull.hi), f2(s.sig.boxBull.lo), s.sig.boxBull.rng.toFixed(1), s.sig.boxBull.brk.toFixed(2)]
+    : b.kind === 'ma' ? [f2(s.ma[b.n]), md(s.sig[b.key].date), s.sig[b.key].slope.toFixed(2)]
     : b.kind === 'rsi' ? [f2(s.rsi)]
     : b.kind === 'macd' ? [f2(s.osc[0]), f2(s.osc[1]), f2(s.osc[2]), f2(s.dif), f2(s.macd)]
     : [SC.fam(s, B).ma.join(' '), f2(s.rsi), SC.macdTxt(s, B), SC.hitCnt(s, B)];

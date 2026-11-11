@@ -10,6 +10,19 @@ MA_N = (30, 60, 100)
 CROSS_WIN_BULL = 1   # 多方：收盤黃金交叉均線需發生於最近 1 個交易日（當日）
 CROSS_WIN_BEAR = 3   # 空方：收盤死亡交叉均線需發生於近 3 個交易日內
 MIN_BARS = 110
+BOX_N = 20           # 多方「箱型突破」：前 BOX_N 個交易日（約一個月，不含當日）為整理區間
+BOX_RANGE = 0.15     # 整理區間：區間最高價 ÷ 最低價 − 1 ≤ 15%
+
+
+def box_break(c, h, l, i):
+    """第 i 日是否箱型突破：前 BOX_N 日（不含當日）最高／最低價差 ≤ 15%，且當日收盤 > 區間最高價（收盤創一個月新高）。
+    回傳 (區間高, 區間低) 或 None。"""
+    if i < BOX_N:
+        return None
+    hi, lo = max(h[i - BOX_N:i]), min(l[i - BOX_N:i])
+    if lo <= 0 or hi / lo - 1 > BOX_RANGE or c[i] <= hi:
+        return None
+    return hi, lo
 
 
 def sma(a, n):
@@ -94,6 +107,8 @@ def signal_series(rows):
     _, _, osc = macd(h, l, c)
     for i in range(MIN_BARS - 1, L):
         s = set()
+        if box_break(c, h, l, i):
+            s.add("boxBull")
         for n, m in mas.items():
             gx = dx = False
             for j in range(i, i - max(CROSS_WIN_BULL, CROSS_WIN_BEAR), -1):
@@ -237,6 +252,11 @@ def analyze(rows):
         "ma": {},
         "sig": {},
     }
+
+    bx = box_break(c, h, l, last)
+    if bx:
+        res["sig"]["boxBull"] = {"date": rows[last]["date"], "hi": bx[0], "lo": bx[1],
+                                 "rng": (bx[0] / bx[1] - 1) * 100, "brk": (c[last] / bx[0] - 1) * 100}
 
     for n in MA_N:
         m = sma(c, n)

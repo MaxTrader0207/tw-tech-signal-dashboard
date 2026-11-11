@@ -11,17 +11,19 @@ SC.MA_N = [30, 60, 100];
 SC.MA_COLOR = {30: '#f5b83d', 60: '#4da3ff', 100: '#b07cff'};
 SC.X_FAM_KEYS = ['maBull30', 'maBull60', 'maBull100', 'maBear30', 'maBear60', 'maBear100',
   'rsiBull', 'rsiBear', 'macdBullCross', 'macdBullExp', 'macdBearCross', 'macdBearExp'];
-SC.SIG_KEYS = ['maBull30', 'maBull60', 'maBull100', 'maBear30', 'maBear60', 'maBear100',
+/* 多方「箱型突破」：前 20 個交易日最高／最低價差 ≤ 15%，當日收盤 > 區間最高價；不列入交集 */
+SC.BOX_TITLE = '前 20 日整理區間（高低差 ≤ 15%），今日收盤突破區間高點';
+SC.SIG_KEYS = ['maBull30', 'maBull60', 'maBull100', 'boxBull', 'maBear30', 'maBear60', 'maBear100',
   'rsiBull', 'rsiBear', 'macdBullCross', 'macdBullExp', 'macdBearCross', 'macdBearExp'];
 SC.SIG_LABEL = {
-  maBull30: '黃金交叉 MA30', maBull60: '黃金交叉 MA60', maBull100: '黃金交叉 MA100',
+  maBull30: '黃金交叉 MA30', maBull60: '黃金交叉 MA60', maBull100: '黃金交叉 MA100', boxBull: '箱型突破',
   maBear30: '死亡交叉 MA30', maBear60: '死亡交叉 MA60', maBear100: '死亡交叉 MA100',
   rsiBull: 'RSI(6) ≥ 80', rsiBear: 'RSI(6) ≤ 20',
   macdBullCross: 'OSC 翻正', macdBullExp: 'OSC 連 2 日放大',
   macdBearCross: 'OSC 翻負', macdBearExp: 'OSC 連 2 日減少',
 };
 SC.FILE_LABEL = {
-  maBull30: 'MA30_黃金交叉', maBull60: 'MA60_黃金交叉', maBull100: 'MA100_黃金交叉',
+  maBull30: 'MA30_黃金交叉', maBull60: 'MA60_黃金交叉', maBull100: 'MA100_黃金交叉', boxBull: '箱型突破（一個月整理區間15%內）',
   maBear30: 'MA30_死亡交叉', maBear60: 'MA60_死亡交叉', maBear100: 'MA100_死亡交叉',
   rsiBull: 'RSI6_80以上', rsiBear: 'RSI6_20以下',
   macdBullCross: 'MACD_柱狀體翻正', macdBullExp: 'MACD_柱狀體連2日放大',
