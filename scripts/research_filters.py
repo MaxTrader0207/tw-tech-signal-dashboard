@@ -107,7 +107,7 @@ def features(d):
         for th in ths:
             X[f"ret{n}_gt{int(th * 100)}"] = r > th
     X["ret20_lt-10"] = d["ret20"] < -.10
-    for n in (20, 60, 120, 240):
+    for n in (10, 20, 30, 60, 120, 240):
         X[f"newhigh{n}"] = c > c.shift(1).rolling(n).max()
     X["newlow20"] = c < c.shift(1).rolling(20).min()
     hi240 = h.rolling(240).max()
@@ -162,7 +162,8 @@ LABELS = [
     ("ret120_gt0", "動能", "近120日漲幅 > 0"), ("ret120_gt30", "動能", "近120日漲幅 > 30%"),
     ("rs60_top", "相對強度", "近60日漲幅排全市場前 20%"), ("rs60_bot", "相對強度", "近60日漲幅排全市場後 20%"),
     ("rs120_top", "相對強度", "近120日漲幅排全市場前 20%"),
-    ("newhigh20", "創高", "收盤創 20 日新高"), ("newhigh60", "創高", "收盤創 60 日新高"),
+    ("newhigh10", "創高", "收盤創 10 日新高"), ("newhigh20", "創高", "收盤創 20 日新高"),
+    ("newhigh30", "創高", "收盤創 30 日新高"), ("newhigh60", "創高", "收盤創 60 日新高"),
     ("newhigh120", "創高", "收盤創 120 日新高"), ("newhigh240", "創高", "收盤創 240 日新高"),
     ("near_hi240", "創高", "距 240 日高點 10% 內"), ("far_hi240", "創高", "低於 240 日高點 30% 以上"),
     ("newlow20", "創高", "收盤創 20 日新低"),
@@ -336,7 +337,16 @@ def analyse(P, log=print):
             if s:
                 triples.append({"k": kk, "label": " ＋ ".join(singles[x]["label"] for x in kk), **s})
     triples.sort(key=lambda s: -(s["tp15"]["ex"] + s["r20"]["ex"]))
-    return {"n": N, "days": nd, "from": str(days.min().date()), "to": str(days.max().date()),
+    # 創 N 日新高 × 跳空／長紅 的固定對照表
+    focus = []
+    for n in (10, 20, 30, 60, 120, 240):
+        nh = M[f"newhigh{n}"]
+        for tag, m in (("單獨", nh), ("＋向上跳空", nh & M["gap_up"]), ("＋當日漲幅>5%", nh & M["day_up5"]),
+                       ("＋跳空＋漲幅>5%", nh & M["gap_up"] & M["day_up5"])):
+            s = stat(m)
+            if s:
+                focus.append({"n_days": n, "tag": tag, "label": f"創 {n} 日新高{tag}", **s})
+    return {"focus": focus,"n": N, "days": nd, "from": str(days.min().date()), "to": str(days.max().date()),
             "base": {o: round(base[o] * 100, 2) for o in OUT},
             "base_win": {o: round(float((R[o] > 0).mean()) * 100, 1) for o in ("r20", "tp15")},
             "ybase": {str(y): {o: round(ybase[y][o] * 100, 2) for o in OUT} for y in yrs},
