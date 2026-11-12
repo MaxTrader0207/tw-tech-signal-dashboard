@@ -1,0 +1,32 @@
+name: 做多濾網研究（手動）
+
+# 一次性研究工具：只在手動觸發時執行，不影響每日掃描與網站。
+on: workflow_dispatch
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: 取回 data 分支（股票清單快取）
+        run: |
+          if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
+            git fetch --depth 1 origin data
+            rm -rf docs/data && mkdir -p docs/data
+            git archive FETCH_HEAD | tar -x -C docs/data
+          fi
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -q -r requirements.txt
+      - name: 執行研究
+        run: python scripts/research_filters.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research_filters
+          path: research_filters.json
+      - name: 輸出結果（備援）
+        run: python3 -c "import json;s=json.dumps(json.load(open('research_filters.json')),ensure_ascii=True);[print('RESJSON',s[i:i+3000]) for i in range(0,len(s),3000)]"
