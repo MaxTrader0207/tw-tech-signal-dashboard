@@ -220,16 +220,16 @@ def market_features(d):
                          "m_rsi50": r6 > 50, "m_ret20": c / c.shift(20) - 1 > 0, "m_lt20": c < ma20, "m_rsi30": r6 < 30})
 
 
-def outcomes(d):
+def outcomes(d, tax=scan.TAX):
     c = d.c
     out = {}
     for hh in (5, 10, 20):
-        out[f"r{hh}"] = scan.long_net(c.shift(-hh) / c - 1)
+        out[f"r{hh}"] = scan.long_net(c.shift(-hh) / c - 1, tax)
     arr = [d[x].to_numpy(dtype=float) for x in ("o", "h", "l", "c")]
     hold = (c.shift(-H) / c - 1).to_numpy()
     for tp in (0.10, 0.15):
         first, ret = scan.tpsl_returns(*arr, tp)
-        out[f"tp{int(tp * 100)}"] = scan.long_net(np.where(first < H, ret, hold))
+        out[f"tp{int(tp * 100)}"] = scan.long_net(np.where(first < H, ret, hold), tax)
     return pd.DataFrame(out, index=d.index)
 
 
@@ -266,7 +266,7 @@ def nw_reg_t(y, x, lag=NW_LAG):
     return float(b), float(b / (np.sqrt(max(var, 1e-18)) / sxx))
 
 
-def analyse(P, log=print):
+def analyse(P, log=print, min_n=300, pair_min=3000, day_min=5, yr_min=100):
     """P：合併後的樣本 DataFrame（欄位含 date、各條件布林欄、r5/r10/r20/tp10/tp15）。"""
     P = P.sort_values("date").reset_index(drop=True)
     P["year"] = P["date"].dt.year
@@ -289,7 +289,7 @@ def analyse(P, log=print):
 
     def stat(m, key=None, market=False):
         n = int(m.sum())
-        if n < 300:
+        if n < min_n:
             return None
         res = {"n": n, "cov": round(n / N * 100, 1)}
         for o in OUT:
@@ -306,14 +306,14 @@ def analyse(P, log=print):
                 res[o]["t"] = None if t is None else round(t, 2)
                 res[o]["spread"] = None if b is None else round(b * 100, 2)
             else:                                                   # 選股：同日相對全體的超額
-                ok = c1 >= 5
+                ok = c1 >= day_min
                 d = s1[ok] / c1[ok] - day_all[o][ok]
                 mu, t = nw_t(d)
                 res[o]["t"] = None if t is None else round(t, 2)
                 res[o]["spread"] = None if mu is None else round(mu * 100, 2)
                 res[o]["days"] = int(ok.sum())
             res[o]["yr"] = {str(y): (round((float(R[o][m & ymask[y]].mean()) - ybase[y][o]) * 100, 2)
-                                     if (m & ymask[y]).sum() >= 100 else None) for y in yrs}
+                                     if (m & ymask[y]).sum() >= yr_min else None) for y in yrs}
         return res
 
     M = {k: P[k].to_numpy(dtype=bool) for k, _, _ in LABELS if k in P.columns}
@@ -339,7 +339,7 @@ def analyse(P, log=print):
             if a in mk and b in mk:
                 continue
             m = M[a] & M[b]
-            if m.sum() < 3000:
+            if m.sum() < pair_min:
                 continue
             s = stat(m)
             if s:
@@ -358,7 +358,7 @@ def analyse(P, log=print):
                 continue
             seen.add(kk)
             m = M[p["a"]] & M[p["b"]] & M[c3]
-            if m.sum() < 2000:
+            if m.sum() < pair_min * 2 // 3:
                 continue
             s = stat(m)
             if s:
@@ -388,7 +388,7 @@ def analyse(P, log=print):
         for b in uk[i + 1:]:
             m = M[a] & M[b]
             n = int(m.sum())
-            if n < 3000 or n > 0.97 * min(M[a].sum(), M[b].sum()):      # 太少，或其中一個條件幾乎被另一個涵蓋
+            if n < pair_min or n > 0.97 * min(M[a].sum(), M[b].sum()):      # 太少，或其中一個條件幾乎被另一個涵蓋
                 continue
             st_ = stat(m)
             if st_:
@@ -403,7 +403,8 @@ def analyse(P, log=print):
             "singles": singles, "cand": cand, "pairs": pairs[:40], "triples": triples[:25]}
 
 
-def build(prices, stocks, index_rows, log=print):
+def build(prices, stocks, index_rows, log=print, grp=None):
+    grp = grp or {}
     mkt = market_features(frame(index_rows)).fillna(False).astype(bool)
     parts = []
     for i, s in enumerate(stocks, 1):
@@ -415,14 +416,16 @@ def build(prices, stocks, index_rows, log=print):
         if len(d) < 150:
             continue
         X = features(d)
-        Y = outcomes(d)
+        etf = bool(s.get("etf"))
+        Y = outcomes(d, scan.TAX_ETF if etf else scan.TAX)
         Z = pd.concat([X, Y], axis=1)
-        Z = Z[(Z.index >= scan.BT_START) & (Z["v20"] >= V_MIN) & Z["r20"].notna() & Z["tp15"].notna() & ~Z["locked"]]
+        Z = Z[(Z.index >= scan.BT_START) & ((Z["v20"] >= V_MIN) | etf) & Z["r20"].notna() & Z["tp15"].notna() & ~Z["locked"]]
         if Z.empty:
             continue
         Z = Z.join(mkt, how="left")
         Z[mkt.columns] = Z[mkt.columns].fillna(False).astype(bool)
         Z["date"] = Z.index
+        Z["grp"] = 3 if etf else grp.get(s["id"], 0)
         parts.append(Z.reset_index(drop=True))
         if i % 400 == 0:
             log(f"[研究] 特徵 {i}/{len(stocks)}")
@@ -438,6 +441,10 @@ def main():
     scan.DATA_START = START
     now = dt.datetime.now(scan.TPE)
     stocks = [s for s in scan.stock_universe(now) if not s.get("etf")]
+    members = scan.index_members()
+    grp = {sid: scan.INDEX_GROUPS[k][0] for k, g in members.items() for sid in g["ids"]}
+    have = {s["id"] for s in stocks}
+    stocks += [{"id": e, "name": n, "mkt": "TWSE", "ind": "ETF", "etf": True} for e, n in scan.ETF_POOL if e not in have]
     syms = [scan.ysym(s) for s in stocks]
     t0 = time.time()
     prices = scan.fetch_prices(syms + ["^TWII"])
@@ -448,9 +455,16 @@ def main():
         idx = scan.fetch_prices(["0050.TW"]).get("0050.TW")
         src = "0050（^TWII 取不到）"
     scan.log(f"[研究] 行情 {time.time() - t0:.0f}s，大盤來源：{src}，{len(idx)} 根")
-    P = build(prices, stocks, idx, scan.log)
-    res = analyse(P, scan.log)
-    res["market_src"] = src
+    P = build(prices, stocks, idx, scan.log, grp)
+    res = {"market_src": src, "u": {}}
+    for key, mask, kw in (("all", P["grp"] != 3, {}),
+                          ("tw50", P["grp"] == 1, dict(min_n=150, pair_min=300, day_min=2, yr_min=40)),
+                          ("mid100", P["grp"] == 2, dict(min_n=200, pair_min=500, day_min=3, yr_min=60)),
+                          ("etf", P["grp"] == 3, dict(min_n=60, pair_min=100, day_min=1, yr_min=20))):
+        scan.log(f"[研究] ===== {key}：{int(mask.sum()):,} 筆")
+        r = analyse(P[mask].copy(), scan.log, **kw)
+        res["u"][key] = {k: r[k] for k in ("n", "days", "from", "to", "base", "base_win", "ybase", "user", "upairs", "upairs_n", "focus")}
+        res["u"][key]["upairs"] = r["upairs"][:25]
     out = Path("research_filters.json")
     out.write_text(json.dumps(res, ensure_ascii=False), encoding="utf-8")
     scan.log(f"[研究] 完成，輸出 {out}（{out.stat().st_size / 1024:.0f} KB）")
