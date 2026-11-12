@@ -72,6 +72,7 @@ def weekly(d):
     w["rsi"] = wilder_rsi(w.c, 6)
     _, _, w["osc"] = macd3(w.h, w.l, w.c)
     out = pd.DataFrame({
+        "w_hi10": w.c >= w.c.rolling(10).max(),             # 週收盤為近 10 週（含當週）最高
         "w_gt10": w.c > w.ma10, "w_gt30": w.c > w.ma30, "w_ma30up": w.ma30 > w.ma30.shift(1),
         "w_up": w.c > w.c.shift(1), "w_rsi50": w.rsi > 50, "w_rsi70": w.rsi > 70, "w_osc": w.osc > 0,
     })
@@ -133,8 +134,22 @@ def features(d):
     X["red3"] = (c / o - 1) > .03
     X["gap_up"] = l > h.shift(1)
     X["liq1000"] = v20 / 1000 >= 1000
+    # ---- 使用者指定清單 ----
+    ma30, ma100 = c.rolling(30).mean(), c.rolling(100).mean()
+    X["u_gt_ma30"], X["u_gt_ma100"] = c > ma30, c > ma100
+    X["u_ma10_up"], X["u_ma30_up"], X["u_ma100_up"] = ma[10] > ma[10].shift(1), ma30 > ma30.shift(1), ma100 > ma100.shift(1)
+    X["u_bb_mid"] = c > ma[20]
+    X["u_low2_red"] = (l > l.shift(1)) & (l.shift(1) > l.shift(2)) & (c > o)
+    X["u_dn2_up"] = (c.shift(1) < c.shift(2)) & (c.shift(2) < c.shift(3)) & (c > c.shift(1))
+    for n, m in ((30, ma30), (60, ma[60]), (100, ma100)):
+        cross = (ma[10] > m) & (ma[10].shift(1) <= m.shift(1))
+        X[f"u_x10_{n}"] = (cross | cross.shift(1).fillna(False)) & (ma[10] > m) & (m > m.shift(1))
+    X["locked"] = (chg >= 0.095) & (c >= h)                # 收盤漲停鎖死（買不到）
     X = pd.DataFrame(X).fillna(False).astype(bool)
-    X = pd.concat([X, weekly(d)], axis=1)
+    W = weekly(d)
+    X = pd.concat([X, W], axis=1)
+    X["u_whi_up_ma30"] = X["w_hi10"] & (chg > 0).fillna(False) & X["u_gt_ma30"]
+    X["u_whi_wup_ma30"] = X["w_hi10"] & X["w_up"] & X["u_gt_ma30"]
     X["v20"] = v20 / 1000
     for n in (60, 120):
         X[f"ret{n}"] = d[f"ret{n}"]
@@ -180,6 +195,18 @@ LABELS = [
     ("m_gt20", "大盤", "大盤 > MA20"), ("m_gt60", "大盤", "大盤 > MA60"), ("m_ma60up", "大盤", "大盤 MA60 上揚"),
     ("m_osc", "大盤", "大盤 MACD柱 > 0"), ("m_rsi50", "大盤", "大盤 RSI6 > 50"), ("m_ret20", "大盤", "大盤近20日漲幅 > 0"),
     ("m_lt20", "大盤", "大盤 < MA20"), ("m_rsi30", "大盤", "大盤 RSI6 < 30"),
+]
+# 使用者指定的濾網清單（2026-11-12）
+USER = [
+    ("gt_ma10", "收盤 > MA10"), ("u_gt_ma30", "收盤 > MA30"), ("gt_ma60", "收盤 > MA60"), ("u_gt_ma100", "收盤 > MA100"),
+    ("u_ma10_up", "MA10 上揚"), ("u_ma30_up", "MA30 上揚"), ("ma60_up", "MA60 上揚"), ("u_ma100_up", "MA100 上揚"),
+    ("rsi6_gt50", "RSI6 > 50"), ("rsi6_gt70", "RSI6 > 70"), ("rsi6_gt80", "RSI6 ≥ 80"), ("rsi6_lt30", "RSI6 < 30"), ("rsi6_lt20", "RSI6 ≤ 20"),
+    ("bb_up", "突破布林上軌"), ("u_bb_mid", "站上布林中軌"), ("bb_dn", "跌破布林下軌"), ("bb_narrow", "布林帶寬 < 10%"),
+    ("u_low2_red", "連 2 日低點墊高＋收紅K"), ("u_dn2_up", "連跌 2 日＋今天上漲"),
+    ("u_x10_30", "MA10 黃金交叉 MA30（近2日）且 MA30 上揚"), ("u_x10_60", "MA10 黃金交叉 MA60（近2日）且 MA60 上揚"),
+    ("u_x10_100", "MA10 黃金交叉 MA100（近2日）且 MA100 上揚"),
+    ("w_hi10", "上週週收創 10 週新高"),
+    ("u_whi_up_ma30", "週收創10週新高＋今天上漲＋收盤>MA30"), ("u_whi_wup_ma30", "週收創10週新高＋週線上揚＋收盤>MA30"),
 ]
 MARKET_KEYS = [k for k, g, _ in LABELS if g == "大盤"]
 
@@ -346,7 +373,29 @@ def analyse(P, log=print):
             s = stat(m)
             if s:
                 focus.append({"n_days": n, "tag": tag, "label": f"創 {n} 日新高{tag}", **s})
-    return {"focus": focus,"n": N, "days": nd, "from": str(days.min().date()), "to": str(days.max().date()),
+    # 使用者指定清單：單一條件與兩兩組合
+    for k, _ in USER:
+        M[k] = P[k].to_numpy(dtype=bool)
+    user = []
+    for k, lab in USER:
+        st_ = stat(M[k])
+        if st_:
+            user.append({"k": k, "label": lab, **st_})
+    upairs = []
+    uk = [k for k, _ in USER]
+    ulab = dict(USER)
+    for i, a in enumerate(uk):
+        for b in uk[i + 1:]:
+            m = M[a] & M[b]
+            n = int(m.sum())
+            if n < 3000 or n > 0.97 * min(M[a].sum(), M[b].sum()):      # 太少，或其中一個條件幾乎被另一個涵蓋
+                continue
+            st_ = stat(m)
+            if st_:
+                upairs.append({"a": a, "b": b, "label": f"{ulab[a]} ＋ {ulab[b]}", **st_})
+    upairs.sort(key=lambda z: -(z["tp15"]["ex"] + z["r20"]["ex"]))
+    overlap = {"whi_same": round(float((M["u_whi_wup_ma30"] == (M["w_hi10"] & M["u_gt_ma30"])).mean()) * 100, 2)}
+    return {"user": user, "upairs": upairs[:40], "upairs_n": len(upairs), "overlap": overlap, "focus": focus,"n": N, "days": nd, "from": str(days.min().date()), "to": str(days.max().date()),
             "base": {o: round(base[o] * 100, 2) for o in OUT},
             "base_win": {o: round(float((R[o] > 0).mean()) * 100, 1) for o in ("r20", "tp15")},
             "ybase": {str(y): {o: round(ybase[y][o] * 100, 2) for o in OUT} for y in yrs},
@@ -368,7 +417,7 @@ def build(prices, stocks, index_rows, log=print):
         X = features(d)
         Y = outcomes(d)
         Z = pd.concat([X, Y], axis=1)
-        Z = Z[(Z.index >= scan.BT_START) & (Z["v20"] >= V_MIN) & Z["r20"].notna() & Z["tp15"].notna()]
+        Z = Z[(Z.index >= scan.BT_START) & (Z["v20"] >= V_MIN) & Z["r20"].notna() & Z["tp15"].notna() & ~Z["locked"]]
         if Z.empty:
             continue
         Z = Z.join(mkt, how="left")
