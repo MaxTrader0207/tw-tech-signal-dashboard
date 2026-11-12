@@ -48,6 +48,23 @@ def rsi_mom(r6, i, wr6):
             and wr6 > RSI_MOM[0] and r6[i] > RSI_MOM[1] and r6[i] > r6[i - 1])
 
 
+HI_N = (30, 60)      # 多方「強勢創高」：收盤創 N 日新高＋向上跳空＋當日漲幅 > 5%，排除收盤漲停鎖死
+HI_UP = 0.05
+HI_LIMIT = 0.095     # 漲幅 ≥ 9.5% 且收在當日最高價 → 視為漲停鎖死（買不到），不算訊號
+
+
+def strong_high(c, h, l, i, n):
+    """第 i 日是否強勢創高：收盤 > 前 n 日收盤最高、最低價 > 昨日最高價、漲幅 > 5%，且非漲停鎖死。回傳漲幅或 None。"""
+    if i < n or c[i - 1] <= 0:
+        return None
+    chg = c[i] / c[i - 1] - 1
+    if chg <= HI_UP or l[i] <= h[i - 1] or c[i] <= max(c[i - n:i]):
+        return None
+    if chg >= HI_LIMIT and c[i] >= h[i]:
+        return None
+    return chg
+
+
 def box_range(h, l, i):
     """前 BOX_N 日（不含當日）的 (區間高, 區間低, 幅度)；資料不足回傳 None。"""
     if i < BOX_N:
@@ -157,6 +174,9 @@ def signal_series(rows):
             s.add("maBullX")
         if box_break(c, h, l, i):
             s.add("boxBull")
+        for n in HI_N:
+            if strong_high(c, h, l, i, n) is not None:
+                s.add(f"hiBull{n}")
         ws = last_week_state(wk_of_row, weeks, i)
         if rsi_mom(r6, i, ws[4] if ws else None):
             s.add("rsiBullMom")
@@ -307,6 +327,11 @@ def analyze(rows):
         "sig": {},
     }
 
+    for n in HI_N:
+        chg = strong_high(c, h, l, last, n)
+        if chg is not None:
+            res["sig"][f"hiBull{n}"] = {"chg": chg * 100, "gap": (l[last] / h[last - 1] - 1) * 100,
+                                        "ph": max(c[last - n:last])}
     bx = box_break(c, h, l, last)
     if bx:
         res["sig"]["boxBull"] = {"date": rows[last]["date"], "hi": bx[0], "lo": bx[1],

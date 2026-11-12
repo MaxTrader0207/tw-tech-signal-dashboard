@@ -88,6 +88,11 @@ function render(results) {
     {h: 'MA30斜率', v: s => `<span class="up">+${s.sig.maBullX.slope.toFixed(2)}</span>`},
     {h: '上週週漲幅', v: s => `<span class="up">+${((s.sig.maBullX.wc / s.sig.maBullX.wp - 1) * 100).toFixed(2)}%</span>`},
   ];
+  const hiCols = n => [
+    {h: '當日漲幅', v: s => `<span class="up">+${s.sig['hiBull' + n].chg.toFixed(2)}%</span>`},
+    {h: '跳空幅度', v: s => `<span class="up">+${s.sig['hiBull' + n].gap.toFixed(2)}%</span>`},
+    {h: `前${n}日收盤高`, v: s => f2(s.sig['hiBull' + n].ph)},
+  ];
   const boxCols = [
     {h: '區間高', v: s => f2(s.sig.boxBull.hi)},
     {h: '區間低', v: s => f2(s.sig.boxBull.lo)},
@@ -131,7 +136,7 @@ function render(results) {
     ...(SC.watch.size ? [['⭐ 自選命中', SC.watchHits(results), '']] : []),
     ['交集多方', SC.xTotal(xi, 'Bull'), 'bull'],
     ['交集空方', SC.xTotal(xi, 'Bear'), 'bear'],
-    ['均線多方', uniq(['maBull30', 'maBull60', 'maBull100', 'maBullX', 'boxBull']), 'bull'],
+    ['均線多方', uniq(['maBull30', 'maBull60', 'maBull100', 'maBullX', 'boxBull', 'hiBull30', 'hiBull60']), 'bull'],
     ['均線空方', uniq(['maBear30', 'maBear60', 'maBear100']), 'bear'],
     ['RSI 多方', uniq(['rsiBull', 'rsiBullMom', 'rsiBullTight']), 'bull'],
     ['RSI 空方', lists.rsiBear.length, 'bear'],
@@ -155,12 +160,14 @@ function render(results) {
   <section class="ind">
     <h2>📈 均線指標</h2>
     <div class="def">日線收盤價與 30／60／100 日均線交叉（多方為最近 1 個交易日、空方近 3 個交易日內發生），並搭配均線方向</div>
-    <div class="malegend"><span><i style="background:#f5b83d"></i>MA30 短期</span><span><i style="background:#4da3ff"></i>MA60 中期</span><span><i style="background:#b07cff"></i>MA100 長期</span><span><i style="background:#ff8fb1"></i>MA10×MA30（多方）</span><span><i style="background:#2dd4bf"></i>箱型突破（多方）</span></div>
+    <div class="malegend"><span><i style="background:#f5b83d"></i>MA30 短期</span><span><i style="background:#4da3ff"></i>MA60 中期</span><span><i style="background:#b07cff"></i>MA100 長期</span><span><i style="background:#ff8fb1"></i>MA10×MA30（多方）</span><span><i style="background:#2dd4bf"></i>箱型突破（多方）</span><span><i style="background:#f97316"></i>強勢創高（多方）</span></div>
     <div class="sides">
       <div class="side bull"><h3>▲ 多方板塊</h3>
         ${MA_N.map(n => maBox(n, `收盤價黃金交叉 MA${n}，且 MA${n} 上揚`, lists['maBull' + n], maCols(n)('maBull'), 'maBull' + n)).join('')}
         ${box('mx', 'MA10×30', SC.MX_TITLE, lists.maBullX, mxCols, 'maBullX')}
         ${box('box', '箱型', SC.BOX_TITLE, lists.boxBull, boxCols, 'boxBull')}
+        ${box('hi', '創高30', SC.HI_TITLE(30), lists.hiBull30, hiCols(30), 'hiBull30')}
+        ${box('hi', '創高60', SC.HI_TITLE(60), lists.hiBull60, hiCols(60), 'hiBull60')}
       </div>
       <div class="side bear"><h3>▼ 空方板塊</h3>
         ${MA_N.map(n => maBox(n, `收盤價死亡交叉 MA${n}，且 MA${n} 下彎`, lists['maBear' + n], maCols(n)('maBear'), 'maBear' + n)).join('')}
